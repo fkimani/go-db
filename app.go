@@ -174,10 +174,10 @@ func addAlbum(alb Album) (int64, error) {
 
 }
 
-// NEW
 // searchHandler - handler for search
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-	println("*In searchHandler*")
+	l := log.New().WithFields(log.Fields{"IN": "Search Handler"})
+	l.Info()
 
 	//fetch dropdown for artists
 	artistsList, err := allArtistNames()
@@ -190,53 +190,34 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	//DB orig query artists albums
-	/* 	albums, err := albumsByArtist(r.FormValue("artist"))
-	   	if err != nil {
-	   		log.Fatal(err)
-	   	}
-	   	fmt.Println("selectedTitle Albums found: %v", albums) */
-
-	//TODO
-	// $ cat switch-example.md for example
-
-	/* 	//DB query (move this to switch option 2)---MOVE to RESULTS HANDLER**
-	   	artistFullname := r.FormValue("artist")
-	   	println("artistFullname? ", artistFullname)
-	   	albumBy, err := albumsByArtist(artistFullname)
-	   	if err != nil {
-	   		log.Fatal(err)
-	   	}
-	   	fmt.Println("Albums found: %v", albumBy) */
-
 	// prepare page struct for title and artist dropdowns
 	art := Page{
 		Titles: titlesList,
 		Names:  artistsList,
-		// Body:   albumBy,
 	}
-
 	// parse & execute template
+	l = l.WithFields(log.Fields{"Action": "Parse Template"})
+	l.Info()
 	tmpl, err = template.ParseFiles("search.html")
 	if err != nil {
 		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
 	}
+	l = l.WithFields(log.Fields{"Action": "Execute Template"})
+	l.Info()
 	tmpl.Execute(w, art)
 }
 
 // resultHandler - handler for results
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
-	println("In resultsHandler**")
-	//convert price from string to float32?
-	// stack overflow
+	l := log.New().WithFields(log.Fields{"IN": "Results Handler"})
+	l.Info()
+	//convert price from string to float32? --stack overflow
 	value, err := strconv.ParseFloat(r.FormValue("price"), 32)
 	if err != nil {
 		// do something sensible
 	}
 	price := float32(value)
 
-	println("rH Title: ", r.FormValue("title"))
-	println("rH Artist: ", r.FormValue("artist"))
 	//TODO: get artist and title from select option using "selected" html/tempalte action
 	details := Album{
 		Title:  r.FormValue("title"),
@@ -244,7 +225,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		Price:  price,
 	}
 
-	//CONDITIONAL search
+	//Conditional search - TODO: Switch
 	var albumResult []Album
 	if details.Title != "" {
 		albumResult, err = albumsSearch(details.Title)
@@ -256,19 +237,10 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else {
-		//
 	}
-	//process details gathered for template execution
-	// TODO: switch case 1,2,3 & default for various types of search ie artist(with dropdown), price(with range), title(dropdown)
-	/* albums, err := albumsByArtist(details.Artist)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("%T's Albums found: %T", details.Artist, albums) */ //DELETE block
-	// for _, a := range albums {
-	// 	println(a)
-	// }//DELETE BLOCK
+	// else {
+	// 	//
+	// }
 
 	// prep page data in page struct we created
 	pageInfo := Page{
