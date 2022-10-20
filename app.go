@@ -3,13 +3,13 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"text/template"
 
 	"github.com/go-sql-driver/mysql"
+	log "github.com/sirupsen/log"
 )
 
 var db *sql.DB
@@ -27,7 +27,8 @@ type Album struct {
 
 // Page structure
 type Page struct {
-	Titles map[string]interface{}
+	// Titles map[string]interface{}
+	Titles []string
 	Body   []Album
 	Names  []string
 }
@@ -52,6 +53,12 @@ func main() {
 	if pingErr != nil {
 		log.Fatal(pingErr)
 	}
+
+	l := log.WithFields(log.Fields{
+		"Action":  "Main",
+		"DB":      db,
+		"DB Name": cfg.DBName,
+	})
 	fmt.Println("Connected!")
 
 	// artist name here
@@ -76,8 +83,19 @@ func main() {
 	   	}
 	   	fmt.Printf("%s Albums found: %v\n", artistFullname, albums)
 	*/
+	//just TESTS
+	/* fmt.Println("TEST IN MAIN... ")
+	fmt.Print("Album names: ")
+	fmt.Println(allAlbumNames())
+	fmt.Println("Album by:*** ")
+	fmt.Println(albumsByArtist("John Coltrane"))
+	fmt.Println("***")
+	fmt.Println(albumByID(1))
+	fmt.Println(allArtistNames())
+	a, _ := queryData("Jeru")
+	fmt.Println("a: ", a) */
 
-	//add some more http stuff:
+	//http calls:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/results", resultsHandler)
 	println("Serving http://localhost:8080")
@@ -157,6 +175,78 @@ func addAlbum(alb Album) (int64, error) {
 }
 
 // http functions
+
+// searchHandler - handler for search
+// searchHandler - handle root page(search)
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	println("*In searchHandler*")
+
+	//artists - get artist names from db and serve in clientside artists dropdown
+	artists, err := allArtistNames()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// print artist list
+	/* 	for _, a := range artists {
+	   		println(a)
+	   	}
+	*/
+	// prepare dropdown album titles
+	/* 	var dropdownTitles = map[string]interface{}{
+	   		"blue train":    "Blue Train",
+	   		"giant steps":   "Giant Steps",
+	   		"jeru":          "Jeru",
+	   		"sarah vaughan": "Sssarah Vaughan",
+	   	}
+
+	   	_ = dropdownTitles // doing something with droptitles */
+	titles, err := allAlbumNames()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("titles: ", titles)
+	//DB orig query artists albums
+	albums, err := albumsByArtist(r.FormValue("artist"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("selectedTitle Albums found: %v", albums)
+
+	//TODO
+	// $ cat switch-example.md for example
+
+	//DB query (move this to switch option 2)
+	artistFullname := r.FormValue("artist")
+	println("artistFullname? ", artistFullname)
+	albumBy, err := albumsByArtist(artistFullname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Albums found: %v", albumBy)
+
+	// add results to page struct
+	// prepare page struct for dropdowns
+	art := Page{
+		Titles: titles,
+		Names:  artists,
+		Body:   albumBy,
+	}
+
+	// parse & execute template
+	tmpl, err = template.ParseFiles("search.html")
+	if err != nil {
+		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
+	}
+	tmpl.Execute(w, art)
+
+	/* // check ?if index page sumbission not post then template is blank? i think it means
+	if r.Method != http.MethodPost {
+		tmpl.Execute(w, nil)
+		return
+	}*/
+}
+
+// resultHandler - handler for results
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	println("In resultsHandler**")
 	//convert price from string to float32?
@@ -182,7 +272,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	println("%s's Albums found: %s", details.Artist, albums)
+	fmt.Println("%T's Albums found: %T", details.Artist, albums)
 	// for _, a := range albums {
 	// 	println(a)
 	// }
@@ -201,108 +291,6 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, pageInfo)
 }
 
-// searchHandler - handle root page(search)
-func searchHandler(w http.ResponseWriter, r *http.Request) {
-	println("*In searchHandler*")
-
-	//artists - get artist names from db and serve in clientside artists dropdown
-	artists, err := allArtistNames()
-	if err != nil {
-		log.Fatal(err)
-	}
-	// print artist list
-	/* 	for _, a := range artists {
-	   		println(a)
-	   	}
-	*/
-	// prepare dropdown album titles
-	var dropdownTitles = map[string]interface{}{
-		"blue train":    "Blue Train",
-		"giant steps":   "Giant Steps",
-		"jeru":          "Jeru",
-		"sarah vaughan": "Sarah Vaughan",
-	}
-
-	//DB orig query artists albums
-	albums, err := albumsByArtist(r.FormValue("artist"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("selectedTitle Albums found: %v", albums)
-
-	//TODO
-	/* 	// prepare pages struct for results
-	   	selectedTitle := r.FormValue("title")
-	   	selectedArtist := r.FormValue("artist")
-	   	// selectedPrice := r.FormValue("price")
-
-	   	bloke := Album{
-	   		Title:  selectedTitle,
-	   		Artist: selectedArtist,
-	   		// Price:  float32(selectedPrice),
-	   	}
-	   	_ = bloke //do something fake with struct */
-
-	// TODO: switch statement for the 3 select options
-	/* var inputVal string
-	switch inputVal {
-	case selectedTitle != true:
-		//do something
-		inputVal = selectedTitle
-		println("selectedTitle? ", selectedTitle)
-		albums, err := albumsByArtist(inputVal)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("selectedTitle Albums found: %v", albums)
-	case selectedArtist:
-		// TODO
-		println("selectedArtist? ", selectedArtist)
-		albums, err := albumsByArtist(selectedArtist)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("selectedArtist Albums found: %v", albums)
-	case selectedPrice:
-		//TODO
-	default:
-		fmt.Printf("%s.\n", selectedArtist)
-	} */
-
-	// $ cat switch-example.md for example
-
-	//DB query (move this to switch option 2)
-	artistFullname := r.FormValue("artist")
-	println("artistFullname? ", artistFullname)
-	albums, err := albumsByArtist(artistFullname)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Albums found: %v", albums)
-
-	// add results to page struct
-	// prepare page struct for dropdowns
-	art := Page{
-		Titles: dropdownTitles,
-		Names:  artists,
-		Body:   albums,
-	}
-
-	// parse & execute template
-	tmpl, err = template.ParseFiles("search.html")
-	if err != nil {
-		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
-	}
-	tmpl.Execute(w, art)
-
-	/* // check ?if index page sumbission not post then template is blank? i think it means
-	if r.Method != http.MethodPost {
-		tmpl.Execute(w, nil)
-		return
-	}*/
-
-}
-
 // allArtistNames - helper func to get names of all artists in album table
 func allArtistNames() ([]string, error) {
 	// res us a slice to hold artist names returned
@@ -313,6 +301,9 @@ func allArtistNames() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
+	//print columns
+	col, _ := rows.Columns()
+	fmt.Println("Print columns:", col[0])
 
 	defer rows.Close()
 	//loop through rows, put names in slice of strings we created
@@ -333,14 +324,54 @@ func allArtistNames() ([]string, error) {
 	return res, nil
 }
 
-// queryData returns album query in struct
+// albumNames
+func allAlbumNames() ([]string, error) {
+	var res []string
+
+	// db query - distinct, no overlap
+	cmd := "SELECT title from album;"
+	rows, err := db.Query(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("allAlbumNames: %v", err)
+	}
+	//print columns
+	col, _ := rows.Columns()
+	fmt.Println("Print columns:", col[0])
+
+	defer rows.Close()
+	//loop through rows, put names in slice of strings we created
+	var alb string // temp string to store distinct artist names
+	//if data in rows exists
+	for rows.Next() {
+		if err := rows.Scan(&alb); err != nil {
+			return nil, fmt.Errorf("In allAlbumNames: %v", err)
+		}
+		// res = append(res, alb)
+		// res = append(res, fmt.Sprintf("%v", alb))
+		res = append(res, fmt.Sprintf(alb))
+	}
+	// if error in rows ie rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("allAlbumNames: %v", err)
+	}
+	fmt.Println("albums/titles: ", res)
+	return res, nil
+}
+
+// queryData returns album query in struct eg title
 func queryData(item string) ([]Album, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
-	rows, err := db.Query("SELECT * FROM album WHERE title = ?", title)
+	cmd := fmt.Sprint("SELECT * FROM album WHERE title = ?", item)
+	rows, err := db.Query(cmd) //see if this works better
+	// rows, err := db.Query("SELECT * FROM album WHERE title = ?", item)
 	if err != nil {
 		return nil, fmt.Errorf("queryData: %v", err)
 	}
+
+	//print columns
+	col, _ := rows.Columns()
+	fmt.Println("Print columns:", col[0])
 
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
@@ -354,5 +385,6 @@ func queryData(item string) ([]Album, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("albumsByArtist %q: %v", item, err)
 	}
+
 	return albums, nil
 }
