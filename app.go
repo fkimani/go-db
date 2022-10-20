@@ -174,62 +174,46 @@ func addAlbum(alb Album) (int64, error) {
 
 }
 
-// http functions
-
+// NEW
 // searchHandler - handler for search
-// searchHandler - handle root page(search)
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 	println("*In searchHandler*")
 
-	//artists - get artist names from db and serve in clientside artists dropdown
-	artists, err := allArtistNames()
+	//fetch dropdown for artists
+	artistsList, err := allArtistNames()
 	if err != nil {
 		log.Fatal(err)
 	}
-	// print artist list
-	/* 	for _, a := range artists {
-	   		println(a)
-	   	}
-	*/
-	// prepare dropdown album titles
-	/* 	var dropdownTitles = map[string]interface{}{
-	   		"blue train":    "Blue Train",
-	   		"giant steps":   "Giant Steps",
-	   		"jeru":          "Jeru",
-	   		"sarah vaughan": "Sssarah Vaughan",
-	   	}
+	//fetch dropdown for album titles
+	titlesList, err := allAlbumNames()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	   	_ = dropdownTitles // doing something with droptitles */
-	titles, err := allAlbumNames()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("titles: ", titles)
 	//DB orig query artists albums
-	albums, err := albumsByArtist(r.FormValue("artist"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("selectedTitle Albums found: %v", albums)
+	/* 	albums, err := albumsByArtist(r.FormValue("artist"))
+	   	if err != nil {
+	   		log.Fatal(err)
+	   	}
+	   	fmt.Println("selectedTitle Albums found: %v", albums) */
 
 	//TODO
 	// $ cat switch-example.md for example
 
-	//DB query (move this to switch option 2)
-	artistFullname := r.FormValue("artist")
-	println("artistFullname? ", artistFullname)
-	albumBy, err := albumsByArtist(artistFullname)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Albums found: %v", albumBy)
+	/* 	//DB query (move this to switch option 2)---MOVE to RESULTS HANDLER**
+	   	artistFullname := r.FormValue("artist")
+	   	println("artistFullname? ", artistFullname)
+	   	albumBy, err := albumsByArtist(artistFullname)
+	   	if err != nil {
+	   		log.Fatal(err)
+	   	}
+	   	fmt.Println("Albums found: %v", albumBy) */
 
-	// add results to page struct
-	// prepare page struct for dropdowns
+	// prepare page struct for title and artist dropdowns
 	art := Page{
-		Titles: titles,
-		Names:  artists,
-		Body:   albumBy,
+		Titles: titlesList,
+		Names:  artistsList,
+		// Body:   albumBy,
 	}
 
 	// parse & execute template
@@ -238,12 +222,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
 	}
 	tmpl.Execute(w, art)
-
-	/* // check ?if index page sumbission not post then template is blank? i think it means
-	if r.Method != http.MethodPost {
-		tmpl.Execute(w, nil)
-		return
-	}*/
 }
 
 // resultHandler - handler for results
@@ -354,11 +332,11 @@ func allAlbumNames() ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
 	}
-	fmt.Println("albums/titles: ", res)
+	// fmt.Println("albums/titles: ", res)
 	return res, nil
 }
 
-// queryData returns album query in struct eg title
+// queryData returns album query in struct eg title- defunct for now
 func queryData(item string) ([]Album, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
@@ -387,4 +365,45 @@ func queryData(item string) ([]Album, error) {
 	}
 
 	return albums, nil
+}
+
+// album search by title of al;bum
+// albumsByArtist queries for albums that have the specified artist name.
+func albumsSearch(name string) ([]Album, error) {
+	// An albums slice to hold data from returned rows.
+	var albums []Album
+
+	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
+	if err != nil {
+		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+		}
+		albums = append(albums, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+	}
+	return albums, nil
+}
+
+// search by Price
+// albumByID queries for the album with the specified ID.
+func albumByPrice(id int64) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+
+	row := db.QueryRow("SELECT * FROM album WHERE price BETWEEN ? AND ?+1", id)
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumsById %d: no such album", id)
+		}
+		return alb, fmt.Errorf("albumsById %d: %v", id, err)
+	}
+	return alb, nil
 }
