@@ -244,21 +244,37 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		Price:  price,
 	}
 
+	//CONDITIONAL search
+	var albumResult []Album
+	if details.Title != "" {
+		albumResult, err = albumsSearch(details.Title)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else if details.Artist != "" {
+		albumResult, err = albumsByArtist(details.Artist)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		//
+	}
 	//process details gathered for template execution
 	// TODO: switch case 1,2,3 & default for various types of search ie artist(with dropdown), price(with range), title(dropdown)
-	albums, err := albumsByArtist(details.Artist)
+	/* albums, err := albumsByArtist(details.Artist)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("%T's Albums found: %T", details.Artist, albums)
+	fmt.Println("%T's Albums found: %T", details.Artist, albums) */ //DELETE block
 	// for _, a := range albums {
 	// 	println(a)
-	// }
+	// }//DELETE BLOCK
 
 	// prep page data in page struct we created
 	pageInfo := Page{
-		// Title: r.FormValue("title"),
-		Body: albums,
+		Titles: []string{details.Title},
+		Names:  []string{details.Artist},
+		Body:   albumResult,
 	}
 
 	// parse & execute template
