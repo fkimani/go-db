@@ -9,12 +9,12 @@ import (
 	"text/template"
 
 	"github.com/go-sql-driver/mysql"
-	log "github.com/sirupsen/log"
+	log "github.com/sirupsen/logrus"
 )
 
 var db *sql.DB
 
-//validate templates
+// validate templates
 var tmpl = template.Must(template.ParseFiles("search.html", "results.html"))
 
 // Album struct
@@ -60,7 +60,7 @@ func main() {
 		"DB Name": cfg.DBName,
 	})
 	fmt.Println("Connected!")
-
+	l.Info()
 	// artist name here
 	/* 	albums, err := albumsByArtist("John Coltrane")
 	   	if err != nil {
