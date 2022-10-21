@@ -60,6 +60,7 @@ func main() {
 		"DB Name": cfg.DBName,
 	})
 	l.Info("Connected!\n")
+
 	// artist name here
 	/* 	albums, err := albumsByArtist("John Coltrane")
 	   	if err != nil {
@@ -92,7 +93,10 @@ func main() {
 	fmt.Println(albumByID(1))
 	fmt.Println(allArtistNames())
 	a, _ := queryData("Jeru")
-	fmt.Println("a: ", a) */
+	fmt.Println("a: ", a)
+	a, _ := albumByPrice(17.99)
+	fmt.Println("Price SEarch: ", a)
+	*/
 
 	//http calls:
 	http.HandleFunc("/", searchHandler)
@@ -214,11 +218,25 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Results Handler"})
 	//convert price from string to float32? --stack overflow
-	value, err := strconv.ParseFloat(r.FormValue("price"), 32)
+	/* value, err := strconv.ParseFloat(r.FormValue("price"), 32)
 	if err != nil {
 		// do something sensible
 	}
+	price := float32(value) */
+
+	// format price to 2 decimal places
+	priceStr := r.FormValue("price")
+	//value gets back a float64
+	value, err := strconv.ParseFloat(priceStr, 32)
+	if err != nil {
+		l.WithFields(log.Fields{"value": value, "error": err})
+		l.Info("In strconv.ParseFloat...")
+		log.Fatal(err)
+	}
+	// format to float32
 	price := float32(value)
+	l = l.WithFields(log.Fields{"price": price})
+	l.Info()
 
 	//TODO: get artist and title from select option using "selected" html/tempalte action
 	details := Album{
@@ -239,10 +257,14 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Fatal(err)
 		}
+	} else if details.Price > 0 {
+		l.Info("Price search ", details.Price)
+		p, err := albumByPrice(details.Price)
+		if err != nil {
+			log.Fatal(err)
+		}
+		l.Infof("p: ", p)
 	}
-	// else {
-	// 	//
-	// }
 
 	// prep page data in page struct we created
 	pageInfo := Page{
@@ -363,17 +385,20 @@ func albumsSearch(name string) ([]Album, error) {
 
 // albums search by Price
 // albumByID queries for the album with the specified ID.
-func albumByPrice(id int64) (Album, error) {
+func albumByPrice(id float32) (Album, error) {
 	// An album to hold data from the returned row.
 	var alb Album
+	// id = (math.Floor(id*100) / 100)
+	// id = float32(id)
+	// id, _ = float32(fmt.Printf("%0.2f", id))
 	l := log.WithFields(log.Fields{"In": "albumByPrice()", "id": id})
 	l.Info("search by price...")
-	row := db.QueryRow("SELECT * FROM album WHERE price BETWEEN ? AND ?+1", id)
+	row := db.QueryRow("SELECT * FROM album WHERE price =?; ", id)
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsById %d: no such album", id)
+			return alb, fmt.Errorf("albumsById %f: no such album", id)
 		}
-		return alb, fmt.Errorf("albumsById %d: %v", id, err)
+		return alb, fmt.Errorf("albumsById %f: %v", id, err)
 	}
 	l = l.WithFields(log.Fields{"Result": alb})
 	l.Info()
