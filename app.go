@@ -55,12 +55,11 @@ func main() {
 	}
 
 	l := log.WithFields(log.Fields{
-		"Action":  "Main",
-		"DB":      db,
+		"IN":      "main()",
+		"Action":  "Connect db",
 		"DB Name": cfg.DBName,
 	})
-	fmt.Println("Connected!")
-	l.Info()
+	l.Info("Connected!\n")
 	// artist name here
 	/* 	albums, err := albumsByArtist("John Coltrane")
 	   	if err != nil {
@@ -98,7 +97,7 @@ func main() {
 	//http calls:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/results", resultsHandler)
-	println("Serving http://localhost:8080")
+	l.Info("Serving http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 	// Hard-code ID 2 here to test the query.
@@ -141,6 +140,8 @@ func albumsByArtist(name string) ([]Album, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
+	l := log.WithFields(log.Fields{"Action": "Fetched albums by artist", "Result": albums})
+	l.Info()
 	return albums, nil
 }
 
@@ -148,14 +149,17 @@ func albumsByArtist(name string) ([]Album, error) {
 func albumByID(id int64) (Album, error) {
 	// An album to hold data from the returned row.
 	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumByID()", "id": id})
 
 	row := db.QueryRow("SELECT * FROM album WHERE id = ?", id)
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 		if err == sql.ErrNoRows {
 			return alb, fmt.Errorf("albumsById %d: no such album", id)
 		}
+		l.Infof("error", err)
 		return alb, fmt.Errorf("albumsById %d: %v", id, err)
 	}
+	l.Info("Done")
 	return alb, nil
 }
 
@@ -171,12 +175,11 @@ func addAlbum(alb Album) (int64, error) {
 		return 0, fmt.Errorf("addAlbum: %v", err)
 	}
 	return id, nil
-
 }
 
 // searchHandler - handler for search
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.New().WithFields(log.Fields{"IN": "Search Handler"})
+	l := log.WithFields(log.Fields{"IN": "Search Handler"})
 	l.Info()
 
 	//fetch dropdown for artists
@@ -209,8 +212,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 // resultHandler - handler for results
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.New().WithFields(log.Fields{"IN": "Results Handler"})
-	l.Info()
+	l := log.WithFields(log.Fields{"IN": "Results Handler"})
 	//convert price from string to float32? --stack overflow
 	value, err := strconv.ParseFloat(r.FormValue("price"), 32)
 	if err != nil {
@@ -250,6 +252,8 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse & execute template
+	l = l.WithFields(log.Fields{"Action": "Parse & execute template"})
+	l.Info()
 	tmpl, err = template.ParseFiles("results.html")
 	if err != nil {
 		log.Fatal(err) //TODO: add more to error log/why failed
@@ -261,6 +265,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 func allArtistNames() ([]string, error) {
 	// res us a slice to hold artist names returned
 	var res []string
+	l := log.WithFields(log.Fields{"IN": "allArtistNames()"})
 
 	// db query - distinct, no overlap
 	rows, err := db.Query("SELECT DISTINCT artist from album;")
@@ -268,8 +273,8 @@ func allArtistNames() ([]string, error) {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
 	//print columns
-	col, _ := rows.Columns()
-	fmt.Println("Print columns:", col[0])
+	/* col, _ := rows.Columns()
+	fmt.Println("Print columns:", col[0]) */
 
 	defer rows.Close()
 	//loop through rows, put names in slice of strings we created
@@ -287,13 +292,15 @@ func allArtistNames() ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
+	l = l.WithFields(log.Fields{"Result": res})
+	l.Info()
 	return res, nil
 }
 
 // albumNames
 func allAlbumNames() ([]string, error) {
 	var res []string
-
+	l := log.WithFields(log.Fields{"IN": "allAlbumNames()"})
 	// db query - distinct, no overlap
 	cmd := "SELECT title from album;"
 	rows, err := db.Query(cmd)
@@ -301,8 +308,8 @@ func allAlbumNames() ([]string, error) {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
 	}
 	//print columns
-	col, _ := rows.Columns()
-	fmt.Println("Print columns:", col[0])
+	/* 	col, _ := rows.Columns()
+	   	fmt.Println("Print columns:", col[0]) */
 
 	defer rows.Close()
 	//loop through rows, put names in slice of strings we created
@@ -321,11 +328,60 @@ func allAlbumNames() ([]string, error) {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
 	}
 	// fmt.Println("albums/titles: ", res)
+	l = l.WithFields(log.Fields{"Result": res})
+	l.Info()
 	return res, nil
 }
 
+// album search by title of album
+func albumsSearch(name string) ([]Album, error) {
+	// An albums slice to hold data from returned rows.
+	var albums []Album
+
+	l := log.WithFields(log.Fields{"Result": "albumsSearch()", "title": name})
+
+	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
+	if err != nil {
+		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+		}
+		albums = append(albums, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
+	}
+	l = l.WithFields(log.Fields{"Result": albums})
+	l.Info()
+	return albums, nil
+}
+
+// albums search by Price
+// albumByID queries for the album with the specified ID.
+func albumByPrice(id int64) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumByPrice()", "id": id})
+	l.Info("search by price...")
+	row := db.QueryRow("SELECT * FROM album WHERE price BETWEEN ? AND ?+1", id)
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumsById %d: no such album", id)
+		}
+		return alb, fmt.Errorf("albumsById %d: %v", id, err)
+	}
+	l = l.WithFields(log.Fields{"Result": alb})
+	l.Info()
+	return alb, nil
+}
+
 // queryData returns album query in struct eg title- defunct for now
-func queryData(item string) ([]Album, error) {
+/* func queryData(item string) ([]Album, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
 	cmd := fmt.Sprint("SELECT * FROM album WHERE title = ?", item)
@@ -354,44 +410,4 @@ func queryData(item string) ([]Album, error) {
 
 	return albums, nil
 }
-
-// album search by title of al;bum
-// albumsByArtist queries for albums that have the specified artist name.
-func albumsSearch(name string) ([]Album, error) {
-	// An albums slice to hold data from returned rows.
-	var albums []Album
-
-	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
-	if err != nil {
-		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-	}
-	defer rows.Close()
-	// Loop through rows, using Scan to assign column data to struct fields.
-	for rows.Next() {
-		var alb Album
-		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-		}
-		albums = append(albums, alb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-	}
-	return albums, nil
-}
-
-// search by Price
-// albumByID queries for the album with the specified ID.
-func albumByPrice(id int64) (Album, error) {
-	// An album to hold data from the returned row.
-	var alb Album
-
-	row := db.QueryRow("SELECT * FROM album WHERE price BETWEEN ? AND ?+1", id)
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsById %d: no such album", id)
-		}
-		return alb, fmt.Errorf("albumsById %d: %v", id, err)
-	}
-	return alb, nil
-}
+*/
