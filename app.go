@@ -284,7 +284,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 				result, err := albumPriceTitle(details.Price, details.Title)
 				if err != nil {
 					log.Warn("Bad query - ", err)
-					Album{1 Blue Train John Coltrane 56.99}
+					// Album{1 Blue Train John Coltrane 56.99}
 				}
 				// cast result to album type for return
 				albumResult = []Album{result}
