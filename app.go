@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -198,7 +199,6 @@ func addAlbum(alb Album) (int64, error) {
 // searchHandler - handler for search
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Search Handler"})
-	l.Info()
 
 	//fetch dropdown for artists
 	artistsList, err := allArtistNames()
@@ -223,84 +223,105 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		Names:  artistsList,
 		Price:  priceList,
 	}
-	l = l.WithFields(log.Fields{"Action": "have form data", "titles list": art.Titles, "names list": art.Titles, "artists list": art.Names})
+	l = l.WithFields(log.Fields{"Action": "have form data", "titles list": art.Titles, "artists list": art.Names})
 	l.Info()
 
 	// parse & execute template
 	l = l.WithFields(log.Fields{"Action": "Parse Template"})
-	l.Info()
+	l.Info("Parse search template...")
 	tmpl, err = template.ParseFiles("search.html")
 	if err != nil {
 		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
 	}
 	l = l.WithFields(log.Fields{"Action": "Execute Template"})
-	l.Info()
+	l.Info("Execute search template...")
 	tmpl.Execute(w, art)
 }
 
 // resultHandler - handler for results
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Results Handler"})
-	//convert price from string to float32? --stack overflow
-	/* value, err := strconv.ParseFloat(r.FormValue("price"), 32)
-	if err != nil {
-		// do something sensible
-	}
-	price := float32(value) */
 
-	// format price to 2 decimal places
+	var price float32
+	var err error
 	priceStr := r.FormValue("price")
-	_ = priceStr
-	// value - converts string to float64
-	value, err := strconv.ParseFloat(r.FormValue("price"), 32)
-	if err != nil {
-		l.WithFields(log.Fields{"value": value, "error": err})
-		l.Info("In strconv.ParseFloat...")
-		log.Fatal(err)
-	}
-	// format to float32
-	price := float32(value)
-	l = l.WithFields(log.Fields{"price": price})
-	l.Info()
-
-	/*
-		// take 2 price
-		price, err := strconv.ParseFloat(r.FormValue("price"), 32)
+	// if price is passed, round price 2 decimal places
+	if priceStr != "" {
+		// convert string to float64
+		priceValue, err := strconv.ParseFloat(priceStr, 32)
 		if err != nil {
+			l.WithFields(log.Fields{"value": priceValue, "error": err})
+			l.Info("In strconv.ParseFloat...")
 			log.Fatal(err)
 		}
-		price = []float64{price} */
+		// format 2 Decimal places
+		priceValue = math.Round(100*priceValue) / 100
+		// format to float32
+		price = float32(priceValue)
+		l = l.WithFields(log.Fields{"price": price})
+		l.Info()
+	}
 
-	//TODO: get artist and title from select option using "selected" html/tempalte action
+	//put artist, title and price values in struct
 	details := Album{
 		Title:  r.FormValue("title"),
 		Artist: r.FormValue("artist"),
-		// Price:  price,
-		Price: price,
+		Price:  price,
 	}
+
+	l = log.WithFields(log.Fields{"details": details})
+	l.Info("Details struct ...")
 
 	//Conditional search - TODO: Switch
 	var albumResult []Album
-	if details.Title != "" {
-		albumResult, err = albumsSearch(details.Title)
-		if err != nil {
-			log.Fatal(err)
+	//if there is price and also title or album input, do multiple search;
+	//multi search
+	if details.Price > 0.00 {
+		//there is either a title or artist included in search
+		if details.Title != "" || details.Artist != "" {
+			if details.Title != "" {
+				// PRICE + TITLE
+				result, err := albumPriceTitle(details.Price, details.Title)
+				if err != nil {
+					log.Warn("Bad query - ", err)
+					Album{1 Blue Train John Coltrane 56.99}
+				}
+				// cast result to album type for return
+				albumResult = []Album{result}
+			} else if details.Artist != "" {
+				// PRICE + ARTIST
+				result, err := albumPriceArtist(details.Price, details.Artist)
+				if err != nil {
+					log.Warn("Try again with beautiful query.... ", err)
+				}
+				// cast result to album type for return
+				albumResult = []Album{result}
+			}
+		} else {
+			// PRICE ONLY SEARCh
+			l.Info("Price search ", details.Price)
+			p, err := albumByPrice(details.Price)
+			if err != nil {
+				log.Fatal(err)
+			}
+			l.Infof("p: ", p)
+			albumResult = []Album{p} //cast result into accepted data type
 		}
-	} else if details.Artist != "" {
-		albumResult, err = albumsByArtist(details.Artist)
-		if err != nil {
-			log.Fatal(err)
+	} else { //if only title or only artist search, no price
+		if details.Title != "" {
+			albumResult, err = albumsSearch(details.Title)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else if details.Artist != "" {
+			albumResult, err = albumsByArtist(details.Artist)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-	} else if details.Price > 0 {
-		l.Info("Price search ", details.Price)
-		p, err := albumByPrice(details.Price)
-		if err != nil {
-			log.Fatal(err)
-		}
-		l.Infof("p: ", p)
-		albumResult = []Album{p} //cast result into accepted data type
 	}
 
+	l.Info("search criteria met and processed from data strore...")
 	// prep page data in page struct we created
 	pageInfo := Page{
 		Titles: []string{details.Title},
@@ -437,6 +458,50 @@ func albumByPrice(price float32) (Album, error) {
 	}
 	l = l.WithFields(log.Fields{"Album result": alb})
 	l.Info()
+	return alb, nil
+}
+
+// multisearch price + title or price + artist
+// albums search by Price
+// albumByPriceTitle queries for album by price+title.
+func albumPriceTitle(price float32, title string) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumByPrice()", "price": price})
+
+	//db query - Note: converting price to string for query
+	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND title = ?; ", fmt.Sprint(price), title)
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
+		}
+		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
+	}
+	l = l.WithFields(log.Fields{"Album result": alb})
+	l.Info()
+	return alb, nil
+}
+
+// albumByPriceArtist queries for album by price+artist.
+func albumPriceArtist(price float32, artist string) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumPriceArtist()", "price": price, "artist": artist})
+	l.Info(" queue the orchestra...")
+	// p := fmt.Sprintf("%.2f", price)
+	// fmt.Println("the p", p)
+	//db query - Note: converting price to string for query
+	// test: SELECT * FROM album WHERE price = 17.99 AND artist = GErry Mulligan ORDER BY 1;
+	// SELECT * FROM album WHERE price > 49.99 AND artist = 'JoHN ColtraNe' ORDER BY price;
+	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumPriceArtist %f: no such album", price)
+		}
+		return alb, fmt.Errorf("albumPriceArtist %f: %v", price, err)
+	}
+	l = l.WithFields(log.Fields{"albumPriceArtist() result": alb})
+	l.Info("grammies are in...")
 	return alb, nil
 }
 
