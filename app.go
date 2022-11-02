@@ -67,7 +67,7 @@ func main() {
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/results", resultsHandler)
 	http.HandleFunc("/add", addHandler)
-	// http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/delete", deleteHandler)
 	l.Info("Serving http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
@@ -146,6 +146,23 @@ func addAlbum(alb Album) (int64, error) {
 		return 0, fmt.Errorf("addAlbum: %v", err)
 	}
 	return id, nil
+}
+
+// deleteAlbum
+func deleteAlbum(alb Album) (int64, error) {
+	l := log.WithFields(log.Fields{"In": "deleteAlbum()", "Album to delete": alb})
+
+	result, err := db.Exec("DELETE FROM album WHERE title = ? AND artist = ?;", alb.Title, alb.Artist)
+	// DELETE FROM album WHERE title = 'oner' AND artist = 'cuso';
+	if err != nil {
+		return 0, fmt.Errorf("deleteAlbum: %v", err)
+	}
+	// id, err := result.LastInsertId()//see https://dev.mysql.com/doc/refman/8.0/en/delete.html - appropos return values of DELETE
+	if err != nil {
+		return 0, fmt.Errorf("deleteAlbum: %v", err)
+	}
+	l.Infof("Deletion result: %v ", result)
+	return 1, nil
 }
 
 // searchHandler - handler for search
@@ -292,7 +309,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, pageInfo)
 }
 
-// addHandler - handler for search
+// addHandler - handler for add action
 func addHandler(w http.ResponseWriter, r *http.Request) {
 	var price float32
 	var err error
@@ -347,6 +364,72 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 			Success bool
 			Body    string
 		}{true, fmt.Sprintf("%v by %v $%v", details.Title, details.Artist, details.Price)})
+	}
+}
+
+// deleteHandler - handler for delete action
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	// var price float32
+	var err error
+	l := log.WithFields(log.Fields{"In": "Delete Handler", "Action": "Parse Template"})
+
+	//parse template
+	tmpl, err := template.ParseFiles("delete.html")
+	if err != nil {
+		log.Fatalf("Delete album Handler ParseFiles Error: %v", err)
+	}
+
+	// //fetch vars
+	// priceStr := r.FormValue("price")
+	// // if price is passed, round price 2 decimal places
+	// if priceStr != "" {
+	// 	// convert string to float64
+	// 	priceValue, err := strconv.ParseFloat(priceStr, 32)
+	// 	if err != nil {
+	// 		l.WithFields(log.Fields{"value": priceValue, "error": err})
+	// 		l.Info("In strconv.ParseFloat...")
+	// 		log.Fatal(err)
+	// 	}
+	// 	// format 2 Decimal places
+	// 	priceValue = math.Round(100*priceValue) / 100
+	// 	// format to float32
+	// 	price = float32(priceValue)
+	// 	l = l.WithFields(log.Fields{"price": price})
+	// 	l.Info()
+	// }
+
+	//put artist, title and price values in struct
+	details := Album{
+		Title:  r.FormValue("title"),
+		Artist: r.FormValue("artist"),
+		// Price:  price,
+	}
+
+	//execute conditions 1: if inputs blank(fresh start), render blank template
+	if details.Title == "" && details.Artist == "" {
+		l = l.WithFields(log.Fields{"Action": "Render Delete Album Template"})
+		l.Info("Render delete album template.")
+		tmpl.Execute(w, nil)
+	} else {
+		//execute condition 2. execute sql and return success msg to client
+		id, err := deleteAlbum(details)
+		if err != nil {
+			log.Fatalf("Sorry, can't let you delete this album because: %v", err)
+		}
+
+		var msg string
+		l = l.WithFields(log.Fields{"Current Action": "Delete Album"})
+		if id == 0 {
+			l.Warnf("This album doesnt exist! %v by %v", details.Title, details.Artist)
+			msg = fmt.Sprintf("This album doesnt exist! %v by %v", details.Title, details.Artist)
+		} else {
+			msg = fmt.Sprintf("Successful deletion of album! %v by %v", details.Title, details.Artist)
+			l.Infof("Successfully deleted album %v by %v (id# %v)", details.Title, details.Artist, id)
+		}
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    string
+		}{true, msg})
 	}
 }
 
