@@ -28,7 +28,6 @@ type Album struct {
 
 // Page structure
 type Page struct {
-	// Titles map[string]interface{}
 	Titles []string
 	Body   []Album
 	Price  []float32
@@ -136,7 +135,6 @@ func deleteAlbum(alb Album) (int64, error) {
 	l := log.WithFields(log.Fields{"In": "deleteAlbum()", "Album to delete": alb})
 
 	result, err := db.Exec("DELETE FROM album WHERE title = ? AND artist = ?;", alb.Title, alb.Artist)
-	// DELETE FROM album WHERE title = 'oner' AND artist = 'cuso';
 	if err != nil {
 		return 0, fmt.Errorf("deleteAlbum: %v", err)
 	}
