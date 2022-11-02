@@ -16,7 +16,7 @@ import (
 var db *sql.DB
 
 // validate templates
-var tmpl = template.Must(template.ParseFiles("search.html", "results.html"))
+var tmpl = template.Must(template.ParseFiles("search.html", "results.html", "add.html", "delete.html"))
 
 // Album struct
 type Album struct {
@@ -36,6 +36,7 @@ type Page struct {
 }
 
 func main() {
+	l := log.WithField("Alpha", "starting up...")
 	// Capture connection properties.
 	cfg := mysql.Config{
 		User:   os.Getenv("DBUSER"),
@@ -48,16 +49,16 @@ func main() {
 	var err error
 	db, err = sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 	pingErr := db.Ping()
 	if pingErr != nil {
-		log.Fatal(pingErr)
+		l.Fatal(pingErr)
 	}
 
-	l := log.WithFields(log.Fields{
-		"IN":      "main()",
+	l = log.WithFields(log.Fields{
+		"In":      "main()",
 		"Action":  "Connect db",
 		"DB Name": cfg.DBName,
 	})
@@ -69,7 +70,7 @@ func main() {
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/delete", deleteHandler)
 	l.Info("Serving http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	l.Fatal(http.ListenAndServe(":8080", nil))
 
 }
 
@@ -154,17 +155,17 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	//fetch dropdown for artists
 	artistsList, err := allArtistNames()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 	//fetch dropdown for album titles
 	titlesList, err := allAlbumNames()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 	priceList, err := allAlbumPrices()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 	// prepare page struct for title and artist dropdowns
@@ -202,7 +203,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			l.WithFields(log.Fields{"value": priceValue, "error": err})
 			l.Info("In strconv.ParseFloat...")
-			log.Fatal(err)
+			l.Fatal(err)
 		}
 		// format 2 Decimal places
 		priceValue = math.Round(100*priceValue) / 100
@@ -238,7 +239,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 				// PRICE + ARTIST
 				result, err := albumPriceArtist(details.Price, details.Artist)
 				if err != nil {
-					log.Warn("Try again with beautiful query.... ", err)
+					l.Warnf("Try again with beautiful query.... ", err)
 				}
 				// cast result to album type for return
 				albumResult = []Album{result}
@@ -248,7 +249,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 			l.Info("Price search ", details.Price)
 			p, err := albumByPrice(details.Price)
 			if err != nil {
-				log.Fatal(err)
+				l.Fatal(err)
 			}
 			l.Infof("p: ", p)
 			albumResult = []Album{p} //cast result into accepted data type
@@ -257,12 +258,12 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		if details.Title != "" {
 			albumResult, err = albumsSearch(details.Title)
 			if err != nil {
-				log.Fatal(err)
+				l.Fatal(err)
 			}
 		} else if details.Artist != "" {
 			albumResult, err = albumsByArtist(details.Artist)
 			if err != nil {
-				log.Fatal(err)
+				l.Fatal(err)
 			}
 		}
 	}
@@ -277,11 +278,11 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse & execute template
-	l = l.WithFields(log.Fields{"Action": "Parse & execute template"})
+	l = l.WithFields(log.Fields{"current action": "Parse template"})
 	l.Info()
 	tmpl, err = template.ParseFiles("results.html")
 	if err != nil {
-		log.Fatal(err) //TODO: add more to error log/why failed
+		l.Fatalf("Failed likely because of bad data we're trying to parse on the results.html template. Error: %v", err)
 	}
 	tmpl.Execute(w, pageInfo)
 }
@@ -295,7 +296,7 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	//parse template
 	tmpl, err := template.ParseFiles("add.html")
 	if err != nil {
-		log.Fatalf("Add album Handler ParseFiles Error: %v", err)
+		l.Fatalf("Add album Handler ParseFiles Error: %v", err)
 	}
 
 	//fetch vars
@@ -306,8 +307,8 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 		priceValue, err := strconv.ParseFloat(priceStr, 32)
 		if err != nil {
 			l.WithFields(log.Fields{"value": priceValue, "error": err})
-			l.Info("In strconv.ParseFloat...")
-			log.Fatal(err)
+			l.Warnf("In strconv.ParseFloat error %v: ", err)
+			l.Fatal(err)
 		}
 		// format 2 Decimal places
 		priceValue = math.Round(100*priceValue) / 100
@@ -333,7 +334,7 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 		//execute condition 2. execute sql and return success msg to client
 		id, err := addAlbum(details)
 		if err != nil {
-			log.Fatalf("Sorry, can't let you add this album because: %v", err)
+			l.Fatalf("Sorry, can't let you add this album because of some error: %v", err)
 		}
 		l = l.WithFields(log.Fields{"Current Action": "Add Album"})
 		l.Infof("Successfully added new album %v by %v $%v (id# %v)", details.Title, details.Artist, details.Price, id)
@@ -353,7 +354,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	//parse template
 	tmpl, err := template.ParseFiles("delete.html")
 	if err != nil {
-		log.Fatalf("Delete album Handler ParseFiles Error: %v", err)
+		l.Fatalf("Delete album Handler ParseFiles Error: %v", err)
 	}
 
 	//put artist, title and price values in struct
@@ -372,7 +373,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 		//execute condition 2. execute sql and return success msg to client
 		id, err := deleteAlbum(details)
 		if err != nil {
-			log.Fatalf("Sorry, can't let you delete this album because: %v", err)
+			l.Fatalf("Sorry, can't let you delete this album because: %v", err)
 		}
 
 		var msg string
