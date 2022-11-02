@@ -416,7 +416,16 @@ func allArtistNames() ([]string, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
-	l = l.WithFields(log.Fields{"Result": res})
+	//TODO: need to sort res and all the Db dropdown lists
+	/* 	res = type SortBy []Type
+
+	   	func (a SortBy) Len() int           { return len(a) }
+	   	func (a SortBy) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+	   	func (a SortBy) Less(i, j int) bool { return a[i] < a[j] } */
+	fmt.Println("sorted: ", res)
+	// l = l.WithFields(log.Fields{"Result": res})
+
+	l = l.WithFields(log.Fields{"Result": fmt.Sprintf("%v count", len(res))})
 	l.Info()
 	return res, nil
 }
