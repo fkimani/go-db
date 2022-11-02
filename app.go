@@ -103,12 +103,12 @@ func main() {
 	/* pricelist, _ := allAlbumPrices()
 	fmt.Println("pricelist: ", pricelist) */
 
-	//test album by price
+	/* //test album by price
 	a, err := albumByPrice(17.99)
 	if err != nil {
 		log.Warnf("Check out this error %v", err)
 	}
-	fmt.Println("in main - $17.99 album found is: ", a)
+	fmt.Println("in main - $17.99 album found is: ", a) */
 	//so we need to convert 17.990000 to 2 decimal places:
 	// option 1: wait...sprintf format it in db query string.
 	//option 2. convert it to string, to float 64, round , then back to float32.
