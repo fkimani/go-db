@@ -63,59 +63,11 @@ func main() {
 	})
 	l.Info("Connected!\n")
 
-	// artist name here
-	/* 	albums, err := albumsByArtist("John Coltrane")
-	   	if err != nil {
-	   		log.Fatal(err)
-	   	}
-	   	fmt.Printf("Albums found: %v\n", albums) */
-
-	// GET user input here --for wuick testing w/put launch http server
-	// fmt.Println("-> Enter artist name eg John Coltrane")
-	// fmt.Println("-> Select a numeric option; \n [1] Book, Chapter & Verse - Dropdown Search \n [2] Keyword Search \n [3] ID Search")
-
-	/* 	consoleReader := bufio.NewScanner(os.Stdin)
-	   	consoleReader.Scan()
-	   	artistFullname := consoleReader.Text()
-	   	println("userChoice %s", artistFullname)
-
-	   	albums, err := albumsByArtist(artistFullname)
-	   	if err != nil {
-	   		log.Fatal(err)
-	   	}
-	   	fmt.Printf("%s Albums found: %v\n", artistFullname, albums)
-	*/
-	//just TESTS
-	/* fmt.Println("TEST IN MAIN... ")
-	fmt.Print("Album names: ")
-	fmt.Println(allAlbumNames())
-	fmt.Println("Album by:*** ")
-	fmt.Println(albumsByArtist("John Coltrane"))
-	fmt.Println("***")
-	fmt.Println(albumByID(1))
-	fmt.Println(allArtistNames())
-	a, _ := queryData("Jeru")
-	fmt.Println("a: ", a)
-	a, _ := albumByPrice(17.99)
-	fmt.Println("Price SEarch: ", a)
-	*/
-	// ALBUM PRICES
-	/* pricelist, _ := allAlbumPrices()
-	fmt.Println("pricelist: ", pricelist) */
-
-	/* //test album by price
-	a, err := albumByPrice(17.99)
-	if err != nil {
-		log.Warnf("Check out this error %v", err)
-	}
-	fmt.Println("in main - $17.99 album found is: ", a) */
-	//so we need to convert 17.990000 to 2 decimal places:
-	// option 1: wait...sprintf format it in db query string.
-	//option 2. convert it to string, to float 64, round , then back to float32.
-
 	//http calls:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/results", resultsHandler)
+	http.HandleFunc("/add", addHandler)
+	// http.HandleFunc("/delete", deleteHandler)
 	l.Info("Serving http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
@@ -338,6 +290,64 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err) //TODO: add more to error log/why failed
 	}
 	tmpl.Execute(w, pageInfo)
+}
+
+// addHandler - handler for search
+func addHandler(w http.ResponseWriter, r *http.Request) {
+	var price float32
+	var err error
+	l := log.WithFields(log.Fields{"In": "Add Handler", "Action": "Parse Template"})
+
+	//parse template
+	tmpl, err := template.ParseFiles("add.html")
+	if err != nil {
+		log.Fatalf("Add album Handler ParseFiles Error: %v", err)
+	}
+
+	//fetch vars
+	priceStr := r.FormValue("price")
+	// if price is passed, round price 2 decimal places
+	if priceStr != "" {
+		// convert string to float64
+		priceValue, err := strconv.ParseFloat(priceStr, 32)
+		if err != nil {
+			l.WithFields(log.Fields{"value": priceValue, "error": err})
+			l.Info("In strconv.ParseFloat...")
+			log.Fatal(err)
+		}
+		// format 2 Decimal places
+		priceValue = math.Round(100*priceValue) / 100
+		// format to float32
+		price = float32(priceValue)
+		l = l.WithFields(log.Fields{"price": price})
+		l.Info()
+	}
+
+	//put artist, title and price values in struct
+	details := Album{
+		Title:  r.FormValue("title"),
+		Artist: r.FormValue("artist"),
+		Price:  price,
+	}
+
+	//execute conditions 1: if inputs blank(fresh start), render blank template
+	if details.Title == "" && details.Artist == "" && details.Price == 0.00 {
+		l = l.WithFields(log.Fields{"Action": "Render Add Album Template"})
+		l.Info("Render new add album template.")
+		tmpl.Execute(w, nil)
+	} else {
+		//execute condition 2. execute sql and return success msg to client
+		id, err := addAlbum(details)
+		if err != nil {
+			log.Fatalf("Sorry, can't let you add this album because: %v", err)
+		}
+		l = l.WithFields(log.Fields{"Current Action": "Add Album"})
+		l.Infof("Successfully added new album %v by %v $%v (id# %v)", details.Title, details.Artist, details.Price, id)
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    string
+		}{true, fmt.Sprintf("%v by %v $%v", details.Title, details.Artist, details.Price)})
+	}
 }
 
 // allArtistNames - helper func to get names of all artists in album table
