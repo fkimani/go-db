@@ -166,6 +166,12 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Fatal(err)
 	}
+	priceMin := priceList[0]
+	priceMax := priceList[len(priceList)-1]
+	//ceiling max
+	priceMax = float32(math.Ceil(float64(priceMax)))
+	priceMin = float32(math.Floor(float64(priceMin)))
+	l.Infof("pricerange min-max $%v-$%v", priceMin, priceMax) // TODO: Do something with pricemax
 
 	// prepare page struct for title and artist dropdowns
 	art := Page{
@@ -173,7 +179,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		Names:  artistsList,
 		Price:  priceList,
 	}
-	l = l.WithFields(log.Fields{"Action": "have form data", "titles list": art.Titles, "artists list": art.Names})
+	l = l.WithFields(log.Fields{"Action": "form data", "titles": len(art.Titles), "artists": len(art.Names)})
 	l.Info()
 
 	// parse & execute template
@@ -576,7 +582,8 @@ func allAlbumPrices() ([]float32, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allAlbumPrices: %v", err)
 	}
-	l = l.WithFields(log.Fields{"Album Prices": res})
+
+	l = l.WithFields(log.Fields{"Price max": res[(len(res) - 1)]})
 	l.Info()
 	return res, nil
 }
