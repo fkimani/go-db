@@ -69,6 +69,9 @@ func main() {
 	http.HandleFunc("/results", resultsHandler)
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/styles/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "styles/style.css")
+	})
 	l.Info("Serving http://localhost:8080")
 	l.Fatal(http.ListenAndServe(":8080", nil))
 
@@ -586,4 +589,46 @@ func allAlbumPrices() ([]float32, error) {
 	l = l.WithFields(log.Fields{"Price max": res[(len(res) - 1)]})
 	l.Info()
 	return res, nil
+}
+
+// testHandler
+func testHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, _ := template.ParseFiles("test.html")
+	prices := []float32{1.50, 2.50, 3.50, 4.50}
+	priceValue := r.FormValue("price")
+
+	if priceValue != "" {
+		testp := []float32{200.00}
+		tmpl.Execute(w, struct {
+			Success   bool
+			Message   string
+			Submitted []float32
+		}{true, "Success $", testp})
+	} else {
+		tmpl.Execute(w, struct {
+			Success bool
+			Prices  []float32
+		}{false, prices})
+	}
+}
+
+// dumpHandler
+func dumpHandler(w http.ResponseWriter, r *http.Request) {
+
+	//fetch data
+	data, _ := dataDump() //TODO
+
+	details := Page{
+		Body: data,
+	}
+	tmpl, _ := template.ParseFiles("dump.html")
+	tmpl.Execute(w, details)
+}
+
+// dataDump
+func dataDump() ([]Album, error) {
+	var albums []Album
+
+	//similar to album by name but tweak it
+	//"SELECT * FROM album ORDER by artist LIMIT 50;"
 }
