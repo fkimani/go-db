@@ -614,21 +614,47 @@ func testHandler(w http.ResponseWriter, r *http.Request) {
 
 // dumpHandler
 func dumpHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"in": "dumpHandler()"})
 
 	//fetch data
-	data, _ := dataDump() //TODO
+	data, err := dataDump() //TODO
+	if err != nil {
+		l.Errorf("dumpHandler: %v", err)
+	}
 
 	details := Page{
 		Body: data,
 	}
 	tmpl, _ := template.ParseFiles("dump.html")
+	l.Info()
 	tmpl.Execute(w, details)
 }
 
 // dataDump
 func dataDump() ([]Album, error) {
+	//similar to album by name but tweak it
 	var albums []Album
 
-	//similar to album by name but tweak it
-	//"SELECT * FROM album ORDER by artist LIMIT 50;"
+	l := log.WithFields(log.Fields{"Result": "albumsSearch()"})
+
+	rows, err := db.Query("SELECT * FROM album ORDER by artist LIMIT 50;")
+	if err != nil {
+		return nil, fmt.Errorf("dataDump(): %v", err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("dataDump(): %v", err)
+		}
+		albums = append(albums, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("dataDump(): %v", err)
+	}
+	l = l.WithFields(log.Fields{"Result": albums})
+	l.Info()
+	return albums, nil
+
 }
