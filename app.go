@@ -64,11 +64,22 @@ func main() {
 	})
 	l.Info("Connected!\n")
 
-	//http calls:
+	// TEST in MAIN
+	/* 	cmd := "SELECT * FROM album ORDER by artist LIMIT 50;"
+	   	q, er := genericQuery(cmd)
+	   	if er != nil {
+	   		l.Fatalf("bad generic Query %v", er)
+	   	}
+	   	l.Infof("Results of generic Query: %v", q) */
+	//END TEST
+
+	//http call handler:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/results", resultsHandler)
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/dump", dumpHandler)
+	http.HandleFunc("/test", testHandler)
 	http.HandleFunc("/styles/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "styles/style.css")
 	})
@@ -593,10 +604,16 @@ func allAlbumPrices() ([]float32, error) {
 
 // testHandler
 func testHandler(w http.ResponseWriter, r *http.Request) {
-	tmpl, _ := template.ParseFiles("test.html")
+	l := log.WithFields(log.Fields{"In": "testHandler()"})
+	tmpl, err := template.ParseFiles("test.html")
+	if err != nil {
+		l.Fatalf("test template errors %v", err)
+	}
+	//fictional prices
 	prices := []float32{1.50, 2.50, 3.50, 4.50}
 	priceValue := r.FormValue("price")
 
+	//priceValue to []float32
 	if priceValue != "" {
 		testp := []float32{200.00}
 		tmpl.Execute(w, struct {
@@ -617,11 +634,11 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"in": "dumpHandler()"})
 
 	//fetch data
-	data, err := dataDump() //TODO
+	data, err := dataDump()
 	if err != nil {
 		l.Errorf("dumpHandler: %v", err)
 	}
-
+	l.Infof("data count %v", len(data))
 	details := Page{
 		Body: data,
 	}
@@ -632,10 +649,10 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 
 // dataDump
 func dataDump() ([]Album, error) {
-	//similar to album by name but tweak it
+	//similar to album Name Search
 	var albums []Album
 
-	l := log.WithFields(log.Fields{"Result": "albumsSearch()"})
+	l := log.WithFields(log.Fields{"Result": "dataDump()"})
 
 	rows, err := db.Query("SELECT * FROM album ORDER by artist LIMIT 50;")
 	if err != nil {
@@ -653,8 +670,34 @@ func dataDump() ([]Album, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("dataDump(): %v", err)
 	}
-	l = l.WithFields(log.Fields{"Result": albums})
+	l = l.WithFields(log.Fields{"Albums": len(albums)})
 	l.Info()
 	return albums, nil
 
+}
+
+// generic query
+func genericQuery(cmd string) ([]Album, error) {
+	l := log.WithFields(log.Fields{"In": "genericQuery()"})
+	var albums []Album
+
+	rows, err := db.Query(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("genericQuery(): %v", err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("genericQuery(): %v", err)
+		}
+		albums = append(albums, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("genericQuery(): %v", err)
+	}
+	l = l.WithFields(log.Fields{"results": len(albums)})
+	l.Info()
+	return albums, nil
 }
