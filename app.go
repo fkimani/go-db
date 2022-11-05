@@ -17,7 +17,7 @@ import (
 var db *sql.DB
 
 // validate templates
-var tmpl = template.Must(template.ParseFiles("search.html", "results.html", "add.html", "delete.html"))
+var tmpl = template.Must(template.ParseFiles("templates/search.html", "templates/results.html", "templates/add.html", "templates/delete.html", "templates/dump.html", "templates/test.html"))
 
 // Album struct
 type Album struct {
@@ -71,6 +71,13 @@ func main() {
 	   		l.Fatalf("bad generic Query %v", er)
 	   	}
 	   	l.Infof("Results of generic Query: %v", q) */
+	alb := Album{19, "Lessons", "Umfundisi", 2}
+	editText := "Umfundissssi"
+	ed, err := updateAlbum(alb, editText)
+	if err != nil {
+		l.Fatalf("cant edit bcoz: %v", err)
+	}
+	fmt.Println("results: ", ed)
 	//END TEST
 
 	//http call handler:
@@ -80,6 +87,7 @@ func main() {
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/dump", dumpHandler)
 	http.HandleFunc("/test", testHandler)
+	http.HandleFunc("/edit", editHandler)
 	http.HandleFunc("/styles/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "styles/style.css")
 	})
@@ -199,7 +207,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	// parse & execute template
 	l = l.WithFields(log.Fields{"Action": "Parse Template"})
 	l.Info("Parse search template...")
-	tmpl, err = template.ParseFiles("search.html")
+	tmpl, err = template.ParseFiles("templates/search.html")
 	if err != nil {
 		l.Fatalf("Search Handler ParseFiles Error: %v", err)
 	}
@@ -299,7 +307,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	// parse & execute template
 	l = l.WithFields(log.Fields{"current action": "Parse template"})
 	l.Info()
-	tmpl, err = template.ParseFiles("results.html")
+	tmpl, err = template.ParseFiles("templates/results.html")
 	if err != nil {
 		l.Fatalf("Failed likely because of bad data we're trying to parse on the results.html template. Error: %v", err)
 	}
@@ -313,7 +321,7 @@ func addHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"In": "Add Handler", "Action": "Parse Template"})
 
 	//parse template
-	tmpl, err := template.ParseFiles("add.html")
+	tmpl, err := template.ParseFiles("templates/add.html")
 	if err != nil {
 		l.Fatalf("Add album Handler ParseFiles Error: %v", err)
 	}
@@ -371,7 +379,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"In": "Delete Handler", "Action": "Parse Template"})
 
 	//parse template
-	tmpl, err := template.ParseFiles("delete.html")
+	tmpl, err := template.ParseFiles("templates/delete.html")
 	if err != nil {
 		l.Fatalf("Delete album Handler ParseFiles Error: %v", err)
 	}
@@ -605,7 +613,7 @@ func allAlbumPrices() ([]float32, error) {
 // testHandler
 func testHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"In": "testHandler()"})
-	tmpl, err := template.ParseFiles("test.html")
+	tmpl, err := template.ParseFiles("templates/test.html")
 	if err != nil {
 		l.Fatalf("test template errors %v", err)
 	}
@@ -642,7 +650,7 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 	details := Page{
 		Body: data,
 	}
-	tmpl, _ := template.ParseFiles("dump.html")
+	tmpl, _ := template.ParseFiles("templates/dump.html")
 	l.Info()
 	tmpl.Execute(w, details)
 }
@@ -700,4 +708,123 @@ func genericQuery(cmd string) ([]Album, error) {
 	l = l.WithFields(log.Fields{"results": len(albums)})
 	l.Info()
 	return albums, nil
+}
+
+// updateAlbum edits specified album stored the database, returns album ID / new entry
+func updateAlbum(alb Album, editText string) (int64, error) {
+	// cmd := fmt.Sprintf("UPDATE items,month SET items.price=month.price WHERE items.id=month.id;"
+	// cmd := fmt.Sprintf("UPDATE items,alb SET items.title=alb.title WHERE items.id=alb.id;")
+	//scenario: {19, Lessons, Umfundizi, 2} from results for "umfundizi" search with goal to edit this name
+	/* 	alb = Album{19, "Lessons", "Umfundizi", 2}
+	   	editText := "Umfundisi" */
+	l := log.WithFields(log.Fields{"In": "editAlbum()", "editing": editText, "by": alb.Artist})
+	l.Infof("ID:%v, Title:%v, Artist:%v, Price:$%v ", alb.ID, alb.Title, alb.Artist, alb.Price)
+	// cmd := fmt.Sprintf("UPDATE recordings.album SET artist=%v WHERE artist=%v AND ID=%v;", editText, alb.Artist, alb.ID)
+	// result, err := db.Exec("INSERT INTO album (title, artist, price) VALUES (?, ?, ?)", alb.Title, alb.Artist, alb.Price)
+	result, err := db.Exec("UPDATE recordings.album SET artist=? WHERE artist=? AND ID=?;", editText, alb.Artist, alb.ID)
+	if err != nil {
+		return 0, fmt.Errorf("editAlbum: %v", err)
+	}
+	// rows returns the number of rows affected by an update
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("editAlbum: %v", err)
+	}
+	l.Infof("%v row(s) updated", rows)
+	return rows, nil
+}
+
+// editHandler
+func editHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"in": "editHandler()"})
+	tmpl, err := template.ParseFiles("templates/edit.html")
+	if err != nil {
+		l.Fatalf("edit template errors %v", err)
+	}
+	//fictional prices
+	/*prices := []float32{1.50, 2.50, 3.50, 4.50}
+		priceValue := r.FormValue("price")
+
+	 	if priceValue != "" {
+			testp := []float32{200.00}
+			tmpl.Execute(w, struct {
+				Success   bool
+				Message   string
+				Submitted []float32
+			}{true, "Success $", testp})
+		} else {
+			tmpl.Execute(w, struct {
+				Success bool
+				Prices  []float32
+			}{false, prices})
+		} */
+
+	// prepare form data to edit
+	var price float32
+	// var err error
+	priceStr := r.FormValue("price")
+	// if price is passed in, round price 2 decimal places
+	if priceStr != "" {
+		// convert string to float64
+		priceValue, err := strconv.ParseFloat(priceStr, 32)
+		if err != nil {
+			l.WithFields(log.Fields{"value": priceValue, "error": err})
+			l.Info("In strconv.ParseFloat...")
+			l.Fatal(err)
+		}
+		// format 2 Decimal places
+		priceValue = math.Round(100*priceValue) / 100
+		// format to float32
+		price = float32(priceValue)
+		l = l.WithFields(log.Fields{"price": price})
+	}
+
+	//put artist, title and price values in struct
+	details := Album{
+		Title:  r.FormValue("title"),
+		Artist: r.FormValue("artist"),
+		Price:  price,
+	}
+
+	results := Page{
+		Titles: []string{details.Title},
+		Body:   []Album{details},
+		Price:  []float32{details.Price},
+		Names:  []string{"Patrick Njiru"},
+	}
+	l = log.WithFields(log.Fields{"details": details})
+
+	l.Info()
+	if priceStr != "" {
+		testp := []float32{200.00}
+		tmpl.Execute(w, struct {
+			Success   bool
+			Message   string
+			Submitted []float32
+		}{true, "Success $", testp})
+	} else {
+		tmpl.Execute(w, struct {
+			Success bool
+			Results Page
+		}{false, results})
+	}
+
+	//TODO: how do we get the input field to be edited.?
+	//lets do a few tests see what comes back from results page+edit page
+
+	//update db
+	/* 	data, err := updateAlbum(details)
+	   	if err != nil {
+	   		l.Errorf("dumpHandler: %v", err)
+	   	}
+	   	l.Infof("data count %v", len(data))
+	   	details := Page{
+	   		Body: data,
+	   	} */
+
+	// tmpl, _ := template.ParseFiles("templates/edit.html")
+	// // if err != nil {
+	// // 	l.Fatalf("err editing", err)
+	// // }
+	// tmpl.Execute(w, struct{ Success bool }{true})
 }
