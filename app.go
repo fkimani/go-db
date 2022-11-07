@@ -117,7 +117,7 @@ func albumsByArtist(name string) ([]Album, error) {
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
-	l := log.WithFields(log.Fields{"Action": "Fetched albums by artist", "Result": albums})
+	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
 	l.Info()
 	return albums, nil
 }
@@ -219,7 +219,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 // resultHandler - handler for results
 func resultsHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Results Handler"})
-
+	l.Info()
 	var price float32
 	var err error
 	priceStr := r.FormValue("price")
@@ -246,7 +246,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		Price:  price,
 	}
 
-	l = log.WithFields(log.Fields{"details": details})
+	l = l.WithFields(log.Fields{"details": details})
 
 	//Conditional search - TODO: Switch
 	var albumResult []Album
@@ -736,20 +736,18 @@ func updateAlbum(alb Album, editText string) (int64, error) {
 
 // editHandler
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Result to edit: ", r.FormValue("result"))
-	fmt.Println("test formvalue: ", r.PostFormValue("result"))
 	l := log.WithFields(log.Fields{"in": "editHandler()"})
 	l.Info()
-	// http.Redirect(w, r, "/edit", 300)
-	// fmt.Println("redirect to /edit page")
 
+	//parse template
 	tmpl, err := template.ParseFiles("templates/edit.html")
 	if err != nil {
 		l.Fatalf("edit template errors %v", err)
 	}
-
+	l.Info("Template parsed")
 	// price check
 	priceStr := r.FormValue("price")
+	l.Info("priceStr,", priceStr)
 	var price float32
 	// var err error
 
@@ -774,6 +772,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		Artist: r.FormValue("artist"),
 		Price:  price,
 	}
+	l.Infof("details: %v", details)
 
 	// if details has data, exec template
 	if details.Title != "" || details.Artist != "" || details.Price != 0.0 {
@@ -786,7 +785,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			l.Fatalf("%v ", err)
 		}
-
+		l.Infof("do we ever get here? details: %v", details)
 		//then execute template
 		tmpl.Execute(w, struct {
 			Success bool
@@ -796,6 +795,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 			Price   float32
 		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price})
 	} else {
+		l.Infof("when no details: %v", details)
 		//render this if not submitted
 		tmpl.Execute(w, struct {
 			Success bool
