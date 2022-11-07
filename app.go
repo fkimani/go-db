@@ -295,7 +295,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	l.Info("search criteria met and processed from data strore...")
+	l.Info("search criteria processed from data store.")
 	// prep page data in page struct we created
 	pageInfo := Page{
 		Titles: []string{details.Title},
@@ -721,7 +721,7 @@ func updateAlbum(alb Album, editText string) (int64, error) {
 	l.Infof("ID:%v, Title:%v, Artist:%v, Price:$%v ", alb.ID, alb.Title, alb.Artist, alb.Price)
 	// cmd := fmt.Sprintf("UPDATE recordings.album SET artist=%v WHERE artist=%v AND ID=%v;", editText, alb.Artist, alb.ID)
 	// result, err := db.Exec("INSERT INTO album (title, artist, price) VALUES (?, ?, ?)", alb.Title, alb.Artist, alb.Price)
-	result, err := db.Exec("UPDATE recordings.album SET artist=? WHERE artist=? AND ID=?;", editText, alb.Artist, alb.ID)
+	result, err := db.Exec("UPDATE album SET artist=? WHERE artist=? AND title=?;", editText, alb.Artist, alb.Title)
 	if err != nil {
 		return 0, fmt.Errorf("editAlbum: %v", err)
 	}
@@ -736,40 +736,29 @@ func updateAlbum(alb Album, editText string) (int64, error) {
 
 // editHandler
 func editHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Result to edit: ", r.FormValue("result"))
+	fmt.Println("test formvalue: ", r.PostFormValue("result"))
 	l := log.WithFields(log.Fields{"in": "editHandler()"})
+	l.Info()
+	// http.Redirect(w, r, "/edit", 300)
+	// fmt.Println("redirect to /edit page")
+
 	tmpl, err := template.ParseFiles("templates/edit.html")
 	if err != nil {
 		l.Fatalf("edit template errors %v", err)
 	}
-	//fictional prices
-	/*prices := []float32{1.50, 2.50, 3.50, 4.50}
-		priceValue := r.FormValue("price")
 
-	 	if priceValue != "" {
-			testp := []float32{200.00}
-			tmpl.Execute(w, struct {
-				Success   bool
-				Message   string
-				Submitted []float32
-			}{true, "Success $", testp})
-		} else {
-			tmpl.Execute(w, struct {
-				Success bool
-				Prices  []float32
-			}{false, prices})
-		} */
-
-	// prepare form data to edit
+	// price check
+	priceStr := r.FormValue("price")
 	var price float32
 	// var err error
-	priceStr := r.FormValue("price")
-	// if price is passed in, round price 2 decimal places
+
+	// if price is passed
 	if priceStr != "" {
 		// convert string to float64
 		priceValue, err := strconv.ParseFloat(priceStr, 32)
 		if err != nil {
 			l.WithFields(log.Fields{"value": priceValue, "error": err})
-			l.Info("In strconv.ParseFloat...")
 			l.Fatal(err)
 		}
 		// format 2 Decimal places
@@ -777,8 +766,8 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		// format to float32
 		price = float32(priceValue)
 		l = l.WithFields(log.Fields{"price": price})
+		l.Info("Price is right. ")
 	}
-
 	//put artist, title and price values in struct
 	details := Album{
 		Title:  r.FormValue("title"),
@@ -786,45 +775,31 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		Price:  price,
 	}
 
-	results := Page{
-		Titles: []string{details.Title},
-		Body:   []Album{details},
-		Price:  []float32{details.Price},
-		Names:  []string{"Patrick Njiru"},
-	}
-	l = log.WithFields(log.Fields{"details": details})
+	// if details has data, exec template
+	if details.Title != "" || details.Artist != "" || details.Price != 0.0 {
+		// var editText string = "Umfundisi" //TODO get value passed not hardcoded
+		editText := details.Artist
 
-	l.Info()
-	if priceStr != "" {
-		testp := []float32{200.00}
-		tmpl.Execute(w, struct {
-			Success   bool
-			Message   string
-			Submitted []float32
-		}{true, "Success $", testp})
-	} else {
+		l.Infof("Show details %v: ", details)
+		// run db process here to update table.
+		resp, err := updateAlbum(details, editText)
+		if err != nil {
+			l.Fatalf("%v ", err)
+		}
+
+		//then execute template
 		tmpl.Execute(w, struct {
 			Success bool
-			Results Page
-		}{false, results})
+			Message string
+			Title   string
+			Artist  string
+			Price   float32
+		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price})
+	} else {
+		//render this if not submitted
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+		}{false, "Update failed. Try again, Later!"})
 	}
-
-	//TODO: how do we get the input field to be edited.?
-	//lets do a few tests see what comes back from results page+edit page
-
-	//update db
-	/* 	data, err := updateAlbum(details)
-	   	if err != nil {
-	   		l.Errorf("dumpHandler: %v", err)
-	   	}
-	   	l.Infof("data count %v", len(data))
-	   	details := Page{
-	   		Body: data,
-	   	} */
-
-	// tmpl, _ := template.ParseFiles("templates/edit.html")
-	// // if err != nil {
-	// // 	l.Fatalf("err editing", err)
-	// // }
-	// tmpl.Execute(w, struct{ Success bool }{true})
 }
