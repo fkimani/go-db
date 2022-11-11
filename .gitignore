@@ -1,8 +1,7 @@
 create-tables.sql
 app
 howto.md
-*.html
 dropdown-example.md
 switch-example.md
-styles/*
 templates
+styles
