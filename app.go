@@ -97,29 +97,33 @@ func main() {
 }
 
 // albumsByArtist queries for albums that have the specified artist name.
-func albumsByArtist(name string) ([]Album, error) {
+func albumsByArtist(name string) ([]Album, map[string]interface{}, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
+	var albMap map[string]interface{} //use case is mapped key:value db result
 
 	rows, err := db.Query("SELECT * FROM album WHERE artist = ?", name)
 	if err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
 		var alb Album
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 		}
 		albums = append(albums, alb)
+		albMap = map[string]interface{}{
+			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
 	l.Info()
-	return albums, nil
+	return albums, albMap, nil
 }
 
 // albumByID queries for the album with the specified ID.
@@ -170,7 +174,7 @@ func deleteAlbum(alb Album) (int64, error) {
 }
 
 // searchHandler - handler for search
-func searchHandler(w http.ResponseWriter, r *http.Request) {
+/* func searchHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Search Handler"})
 
 	//fetch dropdown for artists
@@ -214,6 +218,158 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	l = l.WithFields(log.Fields{"Action": "Execute Template"})
 	l.Info("Execute search template...")
 	tmpl.Execute(w, art)
+} */
+
+// searchhandler v2
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+
+	l := log.WithFields(log.Fields{"IN": "Search Handler"})
+
+	//anyonymous func to handle errors
+	check := func(err error, whereAt string) {
+		l = l.WithField("At", whereAt)
+		l.Fatalf("Error at %v: %v", whereAt, err)
+	}
+	//handle NOT a POST request, render blank search template
+	if r.Method != http.MethodPost {
+		l = l.WithFields(log.Fields{"template": " blank */search.html"})
+
+		//fetch artists names
+		artistsList, err := allArtistNames()
+		check(err, "artistsList")
+
+		//fetch dropdown for album titles
+		titlesList, err := allAlbumNames()
+		check(err, "titlesList")
+
+		//fetch pricelist //TODO
+		priceList, err := allAlbumPrices()
+		check(err, "priceList")
+
+		// prepare page struct for form dropdowns ->title & artist
+		art := Page{
+			Titles: titlesList,
+			Names:  artistsList,
+			Price:  priceList,
+		}
+
+		l = l.WithFields(log.Fields{"Action": "form data", "titles": len(art.Titles), "artists": len(art.Names)})
+		l.Info()
+
+		// parse blank search template
+		tmpl, err = template.ParseFiles("templates/search.html")
+		check(err, "parse search template")
+
+		//execute search template with dropdown data
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    Page
+		}{false, art})
+		l.Info()
+		return
+	} else {
+		//wrap what im doing below from line 266 with get form input and exec template here*
+
+		// filled form with results
+		l = l.WithField("action", "search form results, search.html")
+
+		// get form input values
+		priceValue := r.FormValue("price")
+		titleValue := r.FormValue("title")
+		artistValue := r.FormValue("artist")
+
+		var price float32
+		var err error
+
+		// if priceValue input, format priceValue to float32
+		if priceValue != "" {
+			prc, err := strconv.ParseFloat(priceValue, 32)
+			check(err, "priceValue to float32")
+			price = float32(prc)
+		}
+
+		// prep album struct detail
+		details := Album{
+			Title: titleValue, Artist: artistValue, Price: price,
+		}
+
+		var albumResult []Album
+		var albMapResult map[string]interface{} // returns mapped key:value pairs for better processing of results
+
+		// conditional data search results in albumResult slice
+		//if we have a price, we must have either artist or title data for search
+		if details.Price > 0.00 {
+			//if price + artist
+			if details.Artist != "" {
+				pArt, err := albumPriceArtist(details.Price, details.Artist)
+				check(err, "in price + artist search")
+				l = l.WithField("price+artist res", pArt)
+				// convert p to album slice
+				albumResult = []Album{pArt}
+			} else {
+				//else its price only search
+				priceOnly, err := albumByPrice(details.Price)
+				check(err, "in price only search")
+				albumResult = []Album{priceOnly}
+			}
+		} else if details.Title != "" {
+			//TITLE ONLY
+			albumResult, err = albumsSearch(details.Title)
+			check(err, "title only search")
+		} else if details.Artist != "" {
+			//ARTIST ONLY
+			l = l.WithField("in", "artist only search")
+			albumResult, albMapResult, err = albumsByArtist(details.Artist)
+			check(err, "albumresult only search")
+			l.Info("testing albumMapResult", albMapResult)
+		}
+
+		l.Info("albMapResult: ", albMapResult)
+
+		// put page data in page struct, in slices
+		pageInfo := Page{
+			Titles: []string{details.Title},
+			Names:  []string{details.Artist},
+			Price:  []float32{details.Price},
+			Body:   albumResult,
+		}
+
+		// execute template with search results
+		tmpl.Execute(w, struct {
+			Success      bool
+			Body         Page
+			AlbumMap     map[string]interface{}
+			ResultTitle  interface{}
+			ResultArtist interface{}
+			ResultPrice  interface{}
+			ResultID     interface{}
+		}{true, pageInfo, albMapResult, albMapResult["Title"], albMapResult["Artist"], albMapResult["Price"], albMapResult["ID"]})
+
+		l.Info("Parsed & exec search results")
+	}
+
+	/* // artistvalue as the test
+	if artistValue != "" {
+		details := Album{
+			Title:  titleValue,
+			Price:  price,
+			Artist: artistValue,
+		}
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    Album
+		}{
+			true, details,
+		})
+	} else {
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+		}{
+			true, "successful",
+		})
+	} */
+
 }
 
 // resultHandler - handler for results
@@ -288,7 +444,7 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 				l.Fatal(err)
 			}
 		} else if details.Artist != "" {
-			albumResult, err = albumsByArtist(details.Artist)
+			albumResult, _, err = albumsByArtist(details.Artist) //TODO: 2nd return value var. may not need result handler so...
 			if err != nil {
 				l.Fatal(err)
 			}
