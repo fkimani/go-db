@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"text/template"
 
@@ -16,7 +17,7 @@ import (
 var db *sql.DB
 
 // validate templates
-var tmpl = template.Must(template.ParseFiles("search.html", "results.html"))
+var tmpl = template.Must(template.ParseFiles("templates/search.html", "templates/results.html", "templates/add.html", "templates/delete.html", "templates/dump.html", "templates/test.html"))
 
 // Album struct
 type Album struct {
@@ -28,7 +29,6 @@ type Album struct {
 
 // Page structure
 type Page struct {
-	// Titles map[string]interface{}
 	Titles []string
 	Body   []Album
 	Price  []float32
@@ -36,6 +36,7 @@ type Page struct {
 }
 
 func main() {
+	l := log.WithField("Alpha", "starting up...")
 	// Capture connection properties.
 	cfg := mysql.Config{
 		User:   os.Getenv("DBUSER"),
@@ -48,120 +49,80 @@ func main() {
 	var err error
 	db, err = sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 	pingErr := db.Ping()
 	if pingErr != nil {
-		log.Fatal(pingErr)
+		l.Fatal(pingErr)
 	}
 
-	l := log.WithFields(log.Fields{
-		"IN":      "main()",
+	l = log.WithFields(log.Fields{
+		"In":      "main()",
 		"Action":  "Connect db",
 		"DB Name": cfg.DBName,
 	})
 	l.Info("Connected!\n")
 
-	// artist name here
-	/* 	albums, err := albumsByArtist("John Coltrane")
-	   	if err != nil {
-	   		log.Fatal(err)
+	// TEST in MAIN
+	/* 	cmd := "SELECT * FROM album ORDER by artist LIMIT 50;"
+	   	q, er := genericQuery(cmd)
+	   	if er != nil {
+	   		l.Fatalf("bad generic Query %v", er)
 	   	}
-	   	fmt.Printf("Albums found: %v\n", albums) */
-
-	// GET user input here --for wuick testing w/put launch http server
-	// fmt.Println("-> Enter artist name eg John Coltrane")
-	// fmt.Println("-> Select a numeric option; \n [1] Book, Chapter & Verse - Dropdown Search \n [2] Keyword Search \n [3] ID Search")
-
-	/* 	consoleReader := bufio.NewScanner(os.Stdin)
-	   	consoleReader.Scan()
-	   	artistFullname := consoleReader.Text()
-	   	println("userChoice %s", artistFullname)
-
-	   	albums, err := albumsByArtist(artistFullname)
+	   	l.Infof("Results of generic Query: %v", q) */
+	/* 	alb := Album{19, "Lessons", "Umfundisi", 2}
+	   	editText := "Umfundissssi"
+	   	ed, err := updateAlbum(alb, editText)
 	   	if err != nil {
-	   		log.Fatal(err)
+	   		l.Fatalf("cant edit bcoz: %v", err)
 	   	}
-	   	fmt.Printf("%s Albums found: %v\n", artistFullname, albums)
-	*/
-	//just TESTS
-	/* fmt.Println("TEST IN MAIN... ")
-	fmt.Print("Album names: ")
-	fmt.Println(allAlbumNames())
-	fmt.Println("Album by:*** ")
-	fmt.Println(albumsByArtist("John Coltrane"))
-	fmt.Println("***")
-	fmt.Println(albumByID(1))
-	fmt.Println(allArtistNames())
-	a, _ := queryData("Jeru")
-	fmt.Println("a: ", a)
-	a, _ := albumByPrice(17.99)
-	fmt.Println("Price SEarch: ", a)
-	*/
-	// ALBUM PRICES
-	/* pricelist, _ := allAlbumPrices()
-	fmt.Println("pricelist: ", pricelist) */
+	   	fmt.Println("results: ", ed) */
+	//END TEST
 
-	/* //test album by price
-	a, err := albumByPrice(17.99)
-	if err != nil {
-		log.Warnf("Check out this error %v", err)
-	}
-	fmt.Println("in main - $17.99 album found is: ", a) */
-	//so we need to convert 17.990000 to 2 decimal places:
-	// option 1: wait...sprintf format it in db query string.
-	//option 2. convert it to string, to float 64, round , then back to float32.
-
-	//http calls:
+	//http call handler:
 	http.HandleFunc("/", searchHandler)
-	http.HandleFunc("/results", resultsHandler)
-	l.Info("Serving http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-
-	// Hard-code ID 2 here to test the query.
-	/* alb, err := albumByID(2)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Album found: %v\n", alb) */
-
-	// add album
-	/* albID, err := addAlbum(Album{
-		Title:  "The Modern Sound of Betty Carter",
-		Artist: "Betty Carter",
-		Price:  49.99,
+	http.HandleFunc("/add", addHandler)
+	http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/dump", dumpHandler)
+	http.HandleFunc("/test", testHandler)
+	http.HandleFunc("/edit", editHandler)
+	http.HandleFunc("/styles/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "styles/style.css")
 	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("ID of added album: %v\n", albID)*/
+	l.Info("Serving http://localhost:8080")
+	l.Fatal(http.ListenAndServe(":8080", nil))
+
 }
 
 // albumsByArtist queries for albums that have the specified artist name.
-func albumsByArtist(name string) ([]Album, error) {
+func albumsByArtist(name string) ([]Album, map[string]interface{}, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
+	var albMap map[string]interface{} //use case is mapped key:value db result
 
 	rows, err := db.Query("SELECT * FROM album WHERE artist = ?", name)
 	if err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
 		var alb Album
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 		}
 		albums = append(albums, alb)
+		albMap = map[string]interface{}{
+			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
-	l := log.WithFields(log.Fields{"Action": "Fetched albums by artist", "Result": albums})
+	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
 	l.Info()
-	return albums, nil
+	return albums, albMap, nil
 }
 
 // albumByID queries for the album with the specified ID.
@@ -182,8 +143,7 @@ func albumByID(id int64) (Album, error) {
 	return alb, nil
 }
 
-// addAlbum adds the specified album to the database,
-// returning the album ID of the new entry
+// addAlbum adds specified album to the database, returns album ID of new entry
 func addAlbum(alb Album) (int64, error) {
 	result, err := db.Exec("INSERT INTO album (title, artist, price) VALUES (?, ?, ?)", alb.Title, alb.Artist, alb.Price)
 	if err != nil {
@@ -196,26 +156,47 @@ func addAlbum(alb Album) (int64, error) {
 	return id, nil
 }
 
+// deleteAlbum does delete the album forever
+func deleteAlbum(alb Album) (int64, error) {
+	l := log.WithFields(log.Fields{"In": "deleteAlbum()", "Album to delete": alb})
+
+	result, err := db.Exec("DELETE FROM album WHERE title = ? AND artist = ?;", alb.Title, alb.Artist)
+	if err != nil {
+		return 0, fmt.Errorf("deleteAlbum: %v", err)
+	}
+	// id, err := result.LastInsertId()//see https://dev.mysql.com/doc/refman/8.0/en/delete.html - appropos return values of DELETE
+	if err != nil {
+		return 0, fmt.Errorf("deleteAlbum: %v", err)
+	}
+	l.Infof("Deletion result: %v ", result)
+	return 1, nil
+}
+
 // searchHandler - handler for search
-func searchHandler(w http.ResponseWriter, r *http.Request) {
+/* func searchHandler(w http.ResponseWriter, r *http.Request) {
 	l := log.WithFields(log.Fields{"IN": "Search Handler"})
 
 	//fetch dropdown for artists
 	artistsList, err := allArtistNames()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 	//fetch dropdown for album titles
 	titlesList, err := allAlbumNames()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 	priceList, err := allAlbumPrices()
 	if err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
-	// priceList := float32(price)
+	priceMin := priceList[0]
+	priceMax := priceList[len(priceList)-1]
+	//ceiling max
+	priceMax = float32(math.Ceil(float64(priceMax)))
+	priceMin = float32(math.Floor(float64(priceMin)))
+	l.Infof("pricerange min-max $%v-$%v", priceMin, priceMax) // TODO: Do something with pricemax
 
 	// prepare page struct for title and artist dropdowns
 	art := Page{
@@ -223,27 +204,195 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		Names:  artistsList,
 		Price:  priceList,
 	}
-	l = l.WithFields(log.Fields{"Action": "have form data", "titles list": art.Titles, "artists list": art.Names})
+	l = l.WithFields(log.Fields{"Action": "form data", "titles": len(art.Titles), "artists": len(art.Names)})
 	l.Info()
 
 	// parse & execute template
 	l = l.WithFields(log.Fields{"Action": "Parse Template"})
 	l.Info("Parse search template...")
-	tmpl, err = template.ParseFiles("search.html")
+	tmpl, err = template.ParseFiles("templates/search.html")
 	if err != nil {
-		log.Fatalf("Search Handler ParseFiles Error: %v", err) //TODO: add more to error log/why failed
+		l.Fatalf("Search Handler ParseFiles Error: %v", err)
 	}
 	l = l.WithFields(log.Fields{"Action": "Execute Template"})
 	l.Info("Execute search template...")
 	tmpl.Execute(w, art)
+} */
+
+// searchhandler v2 -> more efficient removes need for results handler
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+
+	l := log.WithFields(log.Fields{"IN": "Search Handler"})
+
+	//anyonymous func to handle errors
+	check := func(err error, whereAt string) {
+		if err != nil {
+			l = l.WithField("At", whereAt)
+			l.Fatalf("Error at %v: %v", whereAt, err)
+		}
+	}
+	//handle NOT a POST request, render blank search template
+	if r.Method != http.MethodPost {
+		l = l.WithFields(log.Fields{"template": " blank */search.html"})
+
+		//fetch artists names
+		artistsList, err := allArtistNames()
+		check(err, "artistsList")
+
+		//fetch dropdown for album titles
+		titlesList, err := allAlbumNames()
+		check(err, "titlesList")
+
+		//fetch pricelist //TODO
+		priceList, err := allAlbumPrices()
+		check(err, "priceList")
+
+		// prepare page struct for form dropdowns ->title & artist
+		art := Page{
+			Titles: titlesList,
+			Names:  artistsList,
+			Price:  priceList,
+		}
+
+		l = l.WithFields(log.Fields{"Action": "form data", "titles": len(art.Titles), "artists": len(art.Names)})
+		l.Info()
+
+		// parse blank search template
+		tmpl, err = template.ParseFiles("templates/search.html")
+		check(err, "parse search template")
+
+		//execute search template with dropdown data
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    Page
+		}{false, art})
+		l.Info()
+		return
+	} else {
+		//wrap what im doing below from line 266 with get form input and exec template here*
+
+		// filled form with results
+		l = l.WithField("action", "search form results, search.html")
+
+		// get form input values
+		priceValue := r.FormValue("price")
+		titleValue := r.FormValue("title")
+		artistValue := r.FormValue("artist")
+
+		var price float32
+		var err error
+
+		// if priceValue input, format priceValue to float32
+		if priceValue != "" {
+			prc, err := strconv.ParseFloat(priceValue, 32)
+			check(err, "priceValue to float32")
+			price = float32(prc)
+		}
+
+		// prep album struct detail
+		details := Album{
+			Title: titleValue, Artist: artistValue, Price: price,
+		}
+
+		var albumResult []Album
+		var albMapResult map[string]interface{} // returns mapped key:value pairs for better processing of results
+
+		// conditional data search results in albumResult slice
+		//if we have a price, we must have either artist or title data for search
+		if details.Price > 0.00 {
+			//if price + artist
+			if details.Artist != "" {
+				l = l.WithField("where", "price + artist search")
+				pArt, err := albumPriceArtist(details.Price, details.Artist)
+				check(err, "in price + artist search")
+				l = l.WithField("price+artist res", pArt)
+				// convert p to album slice
+				albumResult = []Album{pArt}
+				l.Info("albMapResult: ", albMapResult)
+			} else {
+				//else its price only search
+				l = l.WithField("where", "at price only search")
+				priceOnly, err := albumByPrice(details.Price)
+				check(err, "in price only search")
+				albumResult = []Album{priceOnly}
+				l.Info("albMapResult: ", albMapResult)
+			}
+		} else if details.Title != "" {
+			//TITLE ONLY
+			l = l.WithField("where", "title only search")
+			albumResult, err = albumsSearch(details.Title)
+			check(err, "in title only search")
+			l.Info("albMapResult: ", albMapResult)
+		} else if details.Artist != "" {
+			//ARTIST ONLY
+			l = l.WithField("where", "artist only search")
+			albumResult, albMapResult, err = albumsByArtist(details.Artist)
+			check(err, "in album only search")
+			l.Info("testing albumMapResult", albMapResult)
+		}
+
+		/* l.Info("(map not be blank ) albumResult: ", albumResult)
+		l.Info("albMapResult: ", albMapResult) */
+
+		// put page data in page struct, in slices
+		pageInfo := Page{
+			Titles: []string{details.Title},
+			Names:  []string{details.Artist},
+			Price:  []float32{details.Price},
+			Body:   albumResult,
+		}
+
+		// execute template with search results
+		tmpl.Execute(w, struct {
+			Success      bool
+			Body         Page
+			AlbumMap     map[string]interface{}
+			ResultTitle  interface{}
+			ResultArtist interface{}
+			ResultPrice  interface{}
+			ResultID     interface{}
+		}{true, pageInfo, albMapResult, albMapResult["Title"], albMapResult["Artist"], albMapResult["Price"], albMapResult["ID"]})
+
+		l.Info("Parsed & exec search results. ")
+	}
+
+	/* // artistvalue as the test
+	if artistValue != "" {
+		details := Album{
+			Title:  titleValue,
+			Price:  price,
+			Artist: artistValue,
+		}
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    Album
+		}{
+			true, details,
+		})
+	} else {
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+		}{
+			true, "successful",
+		})
+	} */
+
 }
 
-// resultHandler - handler for results
-func resultsHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{"IN": "Results Handler"})
-
+// addHandler - handler for add action
+func addHandler(w http.ResponseWriter, r *http.Request) {
 	var price float32
 	var err error
+	l := log.WithFields(log.Fields{"In": "Add Handler", "Action": "Parse Template"})
+
+	//parse template
+	tmpl, err := template.ParseFiles("templates/add.html")
+	if err != nil {
+		l.Fatalf("Add album Handler ParseFiles Error: %v", err)
+	}
+
+	//fetch vars
 	priceStr := r.FormValue("price")
 	// if price is passed, round price 2 decimal places
 	if priceStr != "" {
@@ -251,8 +400,8 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		priceValue, err := strconv.ParseFloat(priceStr, 32)
 		if err != nil {
 			l.WithFields(log.Fields{"value": priceValue, "error": err})
-			l.Info("In strconv.ParseFloat...")
-			log.Fatal(err)
+			l.Warnf("In strconv.ParseFloat error %v: ", err)
+			l.Fatal(err)
 		}
 		// format 2 Decimal places
 		priceValue = math.Round(100*priceValue) / 100
@@ -269,75 +418,71 @@ func resultsHandler(w http.ResponseWriter, r *http.Request) {
 		Price:  price,
 	}
 
-	l = log.WithFields(log.Fields{"details": details})
-	l.Info("Details struct ...")
-
-	//Conditional search - TODO: Switch
-	var albumResult []Album
-	//if there is price and also title or album input, do multiple search;
-	//multi search
-	if details.Price > 0.00 {
-		//there is either a title or artist included in search
-		if details.Title != "" || details.Artist != "" {
-			if details.Title != "" {
-				// PRICE + TITLE
-				result, err := albumPriceTitle(details.Price, details.Title)
-				if err != nil {
-					log.Warn("Bad query - ", err)
-					// Album{1 Blue Train John Coltrane 56.99}
-				}
-				// cast result to album type for return
-				albumResult = []Album{result}
-			} else if details.Artist != "" {
-				// PRICE + ARTIST
-				result, err := albumPriceArtist(details.Price, details.Artist)
-				if err != nil {
-					log.Warn("Try again with beautiful query.... ", err)
-				}
-				// cast result to album type for return
-				albumResult = []Album{result}
-			}
-		} else {
-			// PRICE ONLY SEARCh
-			l.Info("Price search ", details.Price)
-			p, err := albumByPrice(details.Price)
-			if err != nil {
-				log.Fatal(err)
-			}
-			l.Infof("p: ", p)
-			albumResult = []Album{p} //cast result into accepted data type
+	//execute conditions 1: if inputs blank(fresh start), render blank template
+	if details.Title == "" && details.Artist == "" && details.Price == 0.00 {
+		l = l.WithFields(log.Fields{"Action": "Render Add Album Template"})
+		l.Info("Render new add album template.")
+		tmpl.Execute(w, nil)
+	} else {
+		//execute condition 2. execute sql and return success msg to client
+		id, err := addAlbum(details)
+		if err != nil {
+			l.Fatalf("Sorry, can't let you add this album because of some error: %v", err)
 		}
-	} else { //if only title or only artist search, no price
-		if details.Title != "" {
-			albumResult, err = albumsSearch(details.Title)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else if details.Artist != "" {
-			albumResult, err = albumsByArtist(details.Artist)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
+		l = l.WithFields(log.Fields{"Current Action": "Add Album"})
+		l.Infof("Successfully added new album %v by %v $%v (id# %v)", details.Title, details.Artist, details.Price, id)
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    string
+		}{true, fmt.Sprintf("%v by %v $%v", details.Title, details.Artist, details.Price)})
 	}
+}
 
-	l.Info("search criteria met and processed from data strore...")
-	// prep page data in page struct we created
-	pageInfo := Page{
-		Titles: []string{details.Title},
-		Names:  []string{details.Artist},
-		Price:  []float32{details.Price},
-		Body:   albumResult,
-	}
+// deleteHandler - handler for delete action
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	// var price float32
+	var err error
+	l := log.WithFields(log.Fields{"In": "Delete Handler", "Action": "Parse Template"})
 
-	// parse & execute template
-	l = l.WithFields(log.Fields{"Action": "Parse & execute template"})
-	l.Info()
-	tmpl, err = template.ParseFiles("results.html")
+	//parse template
+	tmpl, err := template.ParseFiles("templates/delete.html")
 	if err != nil {
-		log.Fatal(err) //TODO: add more to error log/why failed
+		l.Fatalf("Delete album Handler ParseFiles Error: %v", err)
 	}
-	tmpl.Execute(w, pageInfo)
+
+	//put artist, title and price values in struct
+	details := Album{
+		Title:  r.FormValue("title"),
+		Artist: r.FormValue("artist"),
+		// Price:  price,
+	}
+
+	//execute conditions 1: if inputs blank(fresh start), render blank template
+	if details.Title == "" && details.Artist == "" {
+		l = l.WithFields(log.Fields{"Action": "Render Delete Album Template"})
+		l.Info("Render delete album template.")
+		tmpl.Execute(w, nil)
+	} else {
+		//execute condition 2. execute sql and return success msg to client
+		id, err := deleteAlbum(details)
+		if err != nil {
+			l.Fatalf("Sorry, can't let you delete this album because: %v", err)
+		}
+
+		var msg string
+		l = l.WithFields(log.Fields{"Current Action": "Delete Album"})
+		if id == 0 {
+			l.Warnf("This album doesnt exist! %v by %v", details.Title, details.Artist)
+			msg = fmt.Sprintf("This album doesnt exist! %v by %v", details.Title, details.Artist)
+		} else {
+			msg = fmt.Sprintf("Successful deletion of album! %v by %v", details.Title, details.Artist)
+			l.Infof("Successfully deleted album %v by %v (id# %v)", details.Title, details.Artist, id)
+		}
+		tmpl.Execute(w, struct {
+			Success bool
+			Body    string
+		}{true, msg})
+	}
 }
 
 // allArtistNames - helper func to get names of all artists in album table
@@ -351,9 +496,6 @@ func allArtistNames() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
-	//print columns
-	/* col, _ := rows.Columns()
-	fmt.Println("Print columns:", col[0]) */
 
 	defer rows.Close()
 	//loop through rows, put names in slice of strings we created
@@ -363,15 +505,22 @@ func allArtistNames() ([]string, error) {
 		if err := rows.Scan(&alb); err != nil {
 			return nil, fmt.Errorf("In allArtistNames: %v", err)
 		}
-		// res = append(res, alb)
-		// res = append(res, fmt.Sprintf("%v", alb))
 		res = append(res, fmt.Sprintf(alb))
 	}
 	// if error in rows ie rows.Err()
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allArtistNames: %v", err)
 	}
-	l = l.WithFields(log.Fields{"Result": res})
+	//need to sort res and all the Db dropdown lists
+	sort.Slice(res, func(i, j int) bool {
+		return res[i] < res[j]
+	})
+	/* 	res = type SortBy []Type
+
+	   	func (a SortBy) Len() int           { return len(a) }
+	   	func (a SortBy) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+	   	func (a SortBy) Less(i, j int) bool { return a[i] < a[j] } */
+	l = l.WithFields(log.Fields{"Result": fmt.Sprintf("%v count", len(res))})
 	l.Info()
 	return res, nil
 }
@@ -386,9 +535,6 @@ func allAlbumNames() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
 	}
-	//print columns
-	/* 	col, _ := rows.Columns()
-	   	fmt.Println("Print columns:", col[0]) */
 
 	defer rows.Close()
 	//loop through rows, put names in slice of strings we created
@@ -398,16 +544,18 @@ func allAlbumNames() ([]string, error) {
 		if err := rows.Scan(&alb); err != nil {
 			return nil, fmt.Errorf("In allAlbumNames: %v", err)
 		}
-		// res = append(res, alb)
-		// res = append(res, fmt.Sprintf("%v", alb))
 		res = append(res, fmt.Sprintf(alb))
 	}
 	// if error in rows ie rows.Err()
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
 	}
-	// fmt.Println("albums/titles: ", res)
-	l = l.WithFields(log.Fields{"Result": res})
+	//need to sort res and all the Db dropdown lists
+	sort.Slice(res, func(i, j int) bool {
+		return res[i] < res[j]
+	})
+
+	l = l.WithFields(log.Fields{"Result": fmt.Sprintf("%v count", len(res))})
 	l.Info()
 	return res, nil
 }
@@ -417,7 +565,7 @@ func albumsSearch(name string) ([]Album, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
 
-	l := log.WithFields(log.Fields{"Result": "albumsSearch()", "title": name})
+	l := log.WithFields(log.Fields{"func": "albumsSearch()", "title": name})
 
 	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
 	if err != nil {
@@ -440,14 +588,12 @@ func albumsSearch(name string) ([]Album, error) {
 	return albums, nil
 }
 
-// albums search by Price
-// albumByID queries for the album with the specified ID.
+// albumByPrice queries for the album by price.
 func albumByPrice(price float32) (Album, error) {
 	// An album to hold data from the returned row.
 	var alb Album
 	l := log.WithFields(log.Fields{"In": "albumByPrice()", "price": price})
-	// p := fmt.Sprintf("%.2f", price)
-	// fmt.Println("the p", p)
+
 	//db query - Note: converting price to string for query
 	row := db.QueryRow("SELECT * FROM album WHERE price = ?; ", fmt.Sprint(price))
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
@@ -461,9 +607,7 @@ func albumByPrice(price float32) (Album, error) {
 	return alb, nil
 }
 
-// multisearch price + title or price + artist
-// albums search by Price
-// albumByPriceTitle queries for album by price+title.
+// albumByPriceTitle queries for album by price+title. --not in use i dont think
 func albumPriceTitle(price float32, title string) (Album, error) {
 	// An album to hold data from the returned row.
 	var alb Album
@@ -488,11 +632,7 @@ func albumPriceArtist(price float32, artist string) (Album, error) {
 	var alb Album
 	l := log.WithFields(log.Fields{"In": "albumPriceArtist()", "price": price, "artist": artist})
 	l.Info(" queue the orchestra...")
-	// p := fmt.Sprintf("%.2f", price)
-	// fmt.Println("the p", p)
-	//db query - Note: converting price to string for query
-	// test: SELECT * FROM album WHERE price = 17.99 AND artist = GErry Mulligan ORDER BY 1;
-	// SELECT * FROM album WHERE price > 49.99 AND artist = 'JoHN ColtraNe' ORDER BY price;
+
 	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
 	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 		if err == sql.ErrNoRows {
@@ -525,45 +665,218 @@ func allAlbumPrices() ([]float32, error) {
 			return nil, fmt.Errorf("In allAlbumPrices: %v", err)
 		}
 		res = append(res, alb)
-		// res = append(res, fmt.Sprintf(alb))
 	}
 	// if error in rows ie rows.Err()
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("allAlbumPrices: %v", err)
 	}
-	l = l.WithFields(log.Fields{"Album Prices": res})
+
+	l = l.WithFields(log.Fields{"Price max": res[(len(res) - 1)]})
 	l.Info()
 	return res, nil
 }
 
-// queryData returns album query in struct eg title- defunct for now
-/* func queryData(item string) ([]Album, error) {
-	// An albums slice to hold data from returned rows.
-	var albums []Album
-	cmd := fmt.Sprint("SELECT * FROM album WHERE title = ?", item)
-	rows, err := db.Query(cmd) //see if this works better
-	// rows, err := db.Query("SELECT * FROM album WHERE title = ?", item)
+// testHandler
+func testHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"In": "testHandler()"})
+	tmpl, err := template.ParseFiles("templates/test.html")
 	if err != nil {
-		return nil, fmt.Errorf("queryData: %v", err)
+		l.Fatalf("test template errors %v", err)
 	}
+	//fictional prices
+	prices := []float32{1.50, 2.50, 3.50, 4.50}
+	priceValue := r.FormValue("price")
 
-	//print columns
-	col, _ := rows.Columns()
-	fmt.Println("Print columns:", col[0])
+	//priceValue to []float32
+	if priceValue != "" {
+		testp := []float32{200.00}
+		tmpl.Execute(w, struct {
+			Success   bool
+			Message   string
+			Submitted []float32
+		}{true, "Success $", testp})
+	} else {
+		tmpl.Execute(w, struct {
+			Success bool
+			Prices  []float32
+		}{false, prices})
+	}
+}
 
+// dumpHandler
+func dumpHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"in": "dumpHandler()"})
+
+	//fetch data
+	data, err := dataDump()
+	if err != nil {
+		l.Errorf("dumpHandler: %v", err)
+	}
+	l.Infof("data count %v", len(data))
+	details := Page{
+		Body: data,
+	}
+	tmpl, _ := template.ParseFiles("templates/dump.html")
+	l.Info()
+	tmpl.Execute(w, details)
+}
+
+// dataDump
+func dataDump() ([]Album, error) {
+	//similar to album Name Search
+	var albums []Album
+
+	l := log.WithFields(log.Fields{"Result": "dataDump()"})
+
+	rows, err := db.Query("SELECT * FROM album ORDER by artist LIMIT 50;")
+	if err != nil {
+		return nil, fmt.Errorf("dataDump(): %v", err)
+	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
 		var alb Album
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("queryData %q: %v", item, err)
+			return nil, fmt.Errorf("dataDump(): %v", err)
 		}
 		albums = append(albums, alb)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", item, err)
+		return nil, fmt.Errorf("dataDump(): %v", err)
 	}
+	l = l.WithFields(log.Fields{"Albums": len(albums)})
+	l.Info()
+	return albums, nil
 
+}
+
+// generic query
+func genericQuery(cmd string) ([]Album, error) {
+	l := log.WithFields(log.Fields{"In": "genericQuery()"})
+	var albums []Album
+
+	rows, err := db.Query(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("genericQuery(): %v", err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, fmt.Errorf("genericQuery(): %v", err)
+		}
+		albums = append(albums, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("genericQuery(): %v", err)
+	}
+	l = l.WithFields(log.Fields{"results": len(albums)})
+	l.Info()
 	return albums, nil
 }
-*/
+
+// updateAlbum edits specified album stored the database, returns album ID / new entry
+func updateAlbum(alb Album, editText string) (int64, error) {
+	// cmd := fmt.Sprintf("UPDATE items,month SET items.price=month.price WHERE items.id=month.id;"
+	// cmd := fmt.Sprintf("UPDATE items,alb SET items.title=alb.title WHERE items.id=alb.id;")
+	//scenario: {19, Lessons, Umfundizi, 2} from results for "umfundizi" search with goal to edit this name
+	/* 	alb = Album{19, "Lessons", "Umfundizi", 2}
+	   	editText := "Umfundisi" */
+	l := log.WithFields(log.Fields{"In": "editAlbum()", "editing": editText, "by": alb.Artist})
+	l.Infof("ID:%v, Title:%v, Artist:%v, Price:$%v ", alb.ID, alb.Title, alb.Artist, alb.Price)
+	// cmd := fmt.Sprintf("UPDATE recordings.album SET artist=%v WHERE artist=%v AND ID=%v;", editText, alb.Artist, alb.ID)
+	// result, err := db.Exec("INSERT INTO album (title, artist, price) VALUES (?, ?, ?)", alb.Title, alb.Artist, alb.Price)
+	result, err := db.Exec("UPDATE album SET artist=? WHERE artist=? AND title=?;", editText, alb.Artist, alb.Title)
+	if err != nil {
+		return 0, fmt.Errorf("editAlbum: %v", err)
+	}
+	// rows returns the number of rows affected by an update
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("editAlbum: %v", err)
+	}
+	l.Infof("%v row(s) updated", rows)
+	return rows, nil
+}
+
+// editHandler
+func editHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"In": "editHandler()"})
+	l.Info()
+
+	// vars from search results/edit input
+	editid, _ := strconv.Atoi(r.FormValue("id"))
+	id := int64(editid)
+
+	editPrice, _ := strconv.ParseFloat(r.FormValue("price"), 32)
+	price := float32(editPrice)
+
+	details := Album{
+		id, r.FormValue("title"), r.FormValue("artist"), price,
+	}
+	//parse template
+	tmpl, err := template.ParseFiles("templates/edit.html")
+	if err != nil {
+		l.Fatalf("edit template errors %v", err)
+	}
+	l.Info("Template parsed")
+	// price check
+	priceStr := r.FormValue("price")
+	l.Info("priceStr,", priceStr)
+	//var price float32
+	// var err error
+
+	// if price is passed
+	/* 	if priceStr != "" {
+	   		// convert string to float64
+	   		priceValue, err := strconv.ParseFloat(priceStr, 32)
+	   		if err != nil {
+	   			l.WithFields(log.Fields{"value": priceValue, "error": err})
+	   			l.Fatal(err)
+	   		}
+	   		// format 2 Decimal places
+	   		priceValue = math.Round(100*priceValue) / 100
+	   		// format to float32
+	   		price = float32(priceValue)
+	   		l = l.WithFields(log.Fields{"price": price})
+	   		l.Info("Price is right. ")
+	   	}
+	   	//put artist, title and price values in struct
+	   	details := Album{
+	   		Title:  r.FormValue("title"),
+	   		Artist: r.FormValue("artist"),
+	   		Price:  price,
+	   	}
+	   	l.Infof("details: %v", details)
+	*/
+	// if details has data, exec template
+	if details.Title != "" || details.Artist != "" || details.Price > 0.0 {
+		// var editText string = "Umfundisi" //TODO get value passed not hardcoded
+		editText := details.Artist
+
+		l.Infof("Show details %v: ", details)
+		// run db process here to update table.
+		resp, err := updateAlbum(details, editText)
+		if err != nil {
+			l.Fatalf("%v ", err)
+		}
+		l.Infof("do we ever get here? details: %v", details)
+		//then execute template
+		tmpl.Execute(w, struct {
+			Success   bool
+			Message   string
+			Title     string
+			Artist    string
+			Price     float32
+			Submitted Album
+		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price, details})
+	} else {
+		l.Infof("when no details: %v", details)
+		// edit page when nothing to edit
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+		}{false, "Nothing to edit. Try something else!"})
+	}
+}
