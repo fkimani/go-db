@@ -71,13 +71,13 @@ func main() {
 	   		l.Fatalf("bad generic Query %v", er)
 	   	}
 	   	l.Infof("Results of generic Query: %v", q) */
-	alb := Album{19, "Lessons", "Umfundisi", 2}
-	editText := "Umfundissssi"
-	ed, err := updateAlbum(alb, editText)
-	if err != nil {
-		l.Fatalf("cant edit bcoz: %v", err)
-	}
-	fmt.Println("results: ", ed)
+	/* 	alb := Album{19, "Lessons", "Umfundisi", 2}
+	   	editText := "Umfundissssi"
+	   	ed, err := updateAlbum(alb, editText)
+	   	if err != nil {
+	   		l.Fatalf("cant edit bcoz: %v", err)
+	   	}
+	   	fmt.Println("results: ", ed) */
 	//END TEST
 
 	//http call handler:
@@ -220,15 +220,17 @@ func deleteAlbum(alb Album) (int64, error) {
 	tmpl.Execute(w, art)
 } */
 
-// searchhandler v2
+// searchhandler v2 -> more efficient removes need for results handler
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	l := log.WithFields(log.Fields{"IN": "Search Handler"})
 
 	//anyonymous func to handle errors
 	check := func(err error, whereAt string) {
-		l = l.WithField("At", whereAt)
-		l.Fatalf("Error at %v: %v", whereAt, err)
+		if err != nil {
+			l = l.WithField("At", whereAt)
+			l.Fatalf("Error at %v: %v", whereAt, err)
+		}
 	}
 	//handle NOT a POST request, render blank search template
 	if r.Method != http.MethodPost {
@@ -301,30 +303,37 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		if details.Price > 0.00 {
 			//if price + artist
 			if details.Artist != "" {
+				l = l.WithField("where", "price + artist search")
 				pArt, err := albumPriceArtist(details.Price, details.Artist)
 				check(err, "in price + artist search")
 				l = l.WithField("price+artist res", pArt)
 				// convert p to album slice
 				albumResult = []Album{pArt}
+				l.Info("albMapResult: ", albMapResult)
 			} else {
 				//else its price only search
+				l = l.WithField("where", "at price only search")
 				priceOnly, err := albumByPrice(details.Price)
 				check(err, "in price only search")
 				albumResult = []Album{priceOnly}
+				l.Info("albMapResult: ", albMapResult)
 			}
 		} else if details.Title != "" {
 			//TITLE ONLY
+			l = l.WithField("where", "title only search")
 			albumResult, err = albumsSearch(details.Title)
-			check(err, "title only search")
+			check(err, "in title only search")
+			l.Info("albMapResult: ", albMapResult)
 		} else if details.Artist != "" {
 			//ARTIST ONLY
-			l = l.WithField("in", "artist only search")
+			l = l.WithField("where", "artist only search")
 			albumResult, albMapResult, err = albumsByArtist(details.Artist)
-			check(err, "albumresult only search")
+			check(err, "in album only search")
 			l.Info("testing albumMapResult", albMapResult)
 		}
 
-		l.Info("albMapResult: ", albMapResult)
+		/* l.Info("(map not be blank ) albumResult: ", albumResult)
+		l.Info("albMapResult: ", albMapResult) */
 
 		// put page data in page struct, in slices
 		pageInfo := Page{
@@ -345,7 +354,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			ResultID     interface{}
 		}{true, pageInfo, albMapResult, albMapResult["Title"], albMapResult["Artist"], albMapResult["Price"], albMapResult["ID"]})
 
-		l.Info("Parsed & exec search results")
+		l.Info("Parsed & exec search results. ")
 	}
 
 	/* // artistvalue as the test
@@ -655,7 +664,7 @@ func albumsSearch(name string) ([]Album, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
 
-	l := log.WithFields(log.Fields{"Result": "albumsSearch()", "title": name})
+	l := log.WithFields(log.Fields{"func": "albumsSearch()", "title": name})
 
 	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
 	if err != nil {
@@ -892,9 +901,19 @@ func updateAlbum(alb Album, editText string) (int64, error) {
 
 // editHandler
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{"in": "editHandler()"})
+	l := log.WithFields(log.Fields{"In": "editHandler()"})
 	l.Info()
 
+	// vars from search results/edit input
+	editid, _ := strconv.Atoi(r.FormValue("id"))
+	id := int64(editid)
+
+	editPrice, _ := strconv.ParseFloat(r.FormValue("price"), 32)
+	price := float32(editPrice)
+
+	details := Album{
+		id, r.FormValue("title"), r.FormValue("artist"), price,
+	}
 	//parse template
 	tmpl, err := template.ParseFiles("templates/edit.html")
 	if err != nil {
@@ -904,34 +923,34 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	// price check
 	priceStr := r.FormValue("price")
 	l.Info("priceStr,", priceStr)
-	var price float32
+	//var price float32
 	// var err error
 
 	// if price is passed
-	if priceStr != "" {
-		// convert string to float64
-		priceValue, err := strconv.ParseFloat(priceStr, 32)
-		if err != nil {
-			l.WithFields(log.Fields{"value": priceValue, "error": err})
-			l.Fatal(err)
-		}
-		// format 2 Decimal places
-		priceValue = math.Round(100*priceValue) / 100
-		// format to float32
-		price = float32(priceValue)
-		l = l.WithFields(log.Fields{"price": price})
-		l.Info("Price is right. ")
-	}
-	//put artist, title and price values in struct
-	details := Album{
-		Title:  r.FormValue("title"),
-		Artist: r.FormValue("artist"),
-		Price:  price,
-	}
-	l.Infof("details: %v", details)
-
+	/* 	if priceStr != "" {
+	   		// convert string to float64
+	   		priceValue, err := strconv.ParseFloat(priceStr, 32)
+	   		if err != nil {
+	   			l.WithFields(log.Fields{"value": priceValue, "error": err})
+	   			l.Fatal(err)
+	   		}
+	   		// format 2 Decimal places
+	   		priceValue = math.Round(100*priceValue) / 100
+	   		// format to float32
+	   		price = float32(priceValue)
+	   		l = l.WithFields(log.Fields{"price": price})
+	   		l.Info("Price is right. ")
+	   	}
+	   	//put artist, title and price values in struct
+	   	details := Album{
+	   		Title:  r.FormValue("title"),
+	   		Artist: r.FormValue("artist"),
+	   		Price:  price,
+	   	}
+	   	l.Infof("details: %v", details)
+	*/
 	// if details has data, exec template
-	if details.Title != "" || details.Artist != "" || details.Price != 0.0 {
+	if details.Title != "" || details.Artist != "" || details.Price > 0.0 {
 		// var editText string = "Umfundisi" //TODO get value passed not hardcoded
 		editText := details.Artist
 
@@ -944,18 +963,19 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		l.Infof("do we ever get here? details: %v", details)
 		//then execute template
 		tmpl.Execute(w, struct {
-			Success bool
-			Message string
-			Title   string
-			Artist  string
-			Price   float32
-		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price})
+			Success   bool
+			Message   string
+			Title     string
+			Artist    string
+			Price     float32
+			Submitted Album
+		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price, details})
 	} else {
 		l.Infof("when no details: %v", details)
-		//render this if not submitted
+		// edit page when nothing to edit
 		tmpl.Execute(w, struct {
 			Success bool
 			Message string
-		}{false, "Update failed. Try again, Later!"})
+		}{false, "Nothing to edit. Try something else!"})
 	}
 }
