@@ -82,7 +82,6 @@ func main() {
 
 	//http call handler:
 	http.HandleFunc("/", searchHandler)
-	http.HandleFunc("/results", resultsHandler)
 	http.HandleFunc("/add", addHandler)
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/dump", dumpHandler)
@@ -379,104 +378,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	} */
 
-}
-
-// resultHandler - handler for results
-func resultsHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{"IN": "Results Handler"})
-	l.Info()
-	var price float32
-	var err error
-	priceStr := r.FormValue("price")
-	// if price is passed in, round price 2 decimal places
-	if priceStr != "" {
-		// convert string to float64
-		priceValue, err := strconv.ParseFloat(priceStr, 32)
-		if err != nil {
-			l.WithFields(log.Fields{"value": priceValue, "error": err})
-			l.Info("In strconv.ParseFloat...")
-			l.Fatal(err)
-		}
-		// format 2 Decimal places
-		priceValue = math.Round(100*priceValue) / 100
-		// format to float32
-		price = float32(priceValue)
-		l = l.WithFields(log.Fields{"price": price})
-	}
-
-	//put artist, title and price values in struct
-	details := Album{
-		Title:  r.FormValue("title"),
-		Artist: r.FormValue("artist"),
-		Price:  price,
-	}
-
-	l = l.WithFields(log.Fields{"details": details})
-
-	//Conditional search - TODO: Switch
-	var albumResult []Album
-	//if there is price and also title or album input, do multiple search;
-	if details.Price > 0.00 {
-		//there is either a title or artist included in search
-		if details.Title != "" || details.Artist != "" {
-			if details.Title != "" {
-				// PRICE + TITLE
-				result, err := albumPriceTitle(details.Price, details.Title)
-				if err != nil {
-					l.Warn("Bad query - ", err)
-				}
-				// cast result to album type for return
-				albumResult = []Album{result}
-			} else if details.Artist != "" {
-				// PRICE + ARTIST
-				result, err := albumPriceArtist(details.Price, details.Artist)
-				if err != nil {
-					l.Warnf("Try again with beautiful query.... ", err)
-				}
-				// cast result to album type for return
-				albumResult = []Album{result}
-			}
-		} else {
-			// PRICE ONLY SEARCh
-			l.Info("Price search ", details.Price)
-			p, err := albumByPrice(details.Price)
-			if err != nil {
-				l.Fatal(err)
-			}
-			l.Infof("p: ", p)
-			albumResult = []Album{p} //cast result into accepted data type
-		}
-	} else { //if only title or only artist search, no price
-		if details.Title != "" {
-			albumResult, err = albumsSearch(details.Title)
-			if err != nil {
-				l.Fatal(err)
-			}
-		} else if details.Artist != "" {
-			albumResult, _, err = albumsByArtist(details.Artist) //TODO: 2nd return value var. may not need result handler so...
-			if err != nil {
-				l.Fatal(err)
-			}
-		}
-	}
-
-	l.Info("search criteria processed from data store.")
-	// prep page data in page struct we created
-	pageInfo := Page{
-		Titles: []string{details.Title},
-		Names:  []string{details.Artist},
-		Price:  []float32{details.Price},
-		Body:   albumResult,
-	}
-
-	// parse & execute template
-	l = l.WithFields(log.Fields{"current action": "Parse template"})
-	l.Info()
-	tmpl, err = template.ParseFiles("templates/results.html")
-	if err != nil {
-		l.Fatalf("Failed likely because of bad data we're trying to parse on the results.html template. Error: %v", err)
-	}
-	tmpl.Execute(w, pageInfo)
 }
 
 // addHandler - handler for add action
