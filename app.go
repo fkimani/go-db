@@ -17,7 +17,7 @@ import (
 var db *sql.DB
 
 // validate templates
-var tmpl = template.Must(template.ParseFiles("templates/search.html", "templates/results.html", "templates/add.html", "templates/delete.html", "templates/dump.html", "templates/test.html"))
+var tmpl = template.Must(template.ParseFiles("templates/search.html", "templates/add.html", "templates/delete.html", "templates/dump.html", "templates/test.html"))
 
 // Album struct
 type Album struct {
@@ -172,54 +172,7 @@ func deleteAlbum(alb Album) (int64, error) {
 	return 1, nil
 }
 
-// searchHandler - handler for search
-/* func searchHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{"IN": "Search Handler"})
-
-	//fetch dropdown for artists
-	artistsList, err := allArtistNames()
-	if err != nil {
-		l.Fatal(err)
-	}
-	//fetch dropdown for album titles
-	titlesList, err := allAlbumNames()
-	if err != nil {
-		l.Fatal(err)
-	}
-
-	priceList, err := allAlbumPrices()
-	if err != nil {
-		l.Fatal(err)
-	}
-	priceMin := priceList[0]
-	priceMax := priceList[len(priceList)-1]
-	//ceiling max
-	priceMax = float32(math.Ceil(float64(priceMax)))
-	priceMin = float32(math.Floor(float64(priceMin)))
-	l.Infof("pricerange min-max $%v-$%v", priceMin, priceMax) // TODO: Do something with pricemax
-
-	// prepare page struct for title and artist dropdowns
-	art := Page{
-		Titles: titlesList,
-		Names:  artistsList,
-		Price:  priceList,
-	}
-	l = l.WithFields(log.Fields{"Action": "form data", "titles": len(art.Titles), "artists": len(art.Names)})
-	l.Info()
-
-	// parse & execute template
-	l = l.WithFields(log.Fields{"Action": "Parse Template"})
-	l.Info("Parse search template...")
-	tmpl, err = template.ParseFiles("templates/search.html")
-	if err != nil {
-		l.Fatalf("Search Handler ParseFiles Error: %v", err)
-	}
-	l = l.WithFields(log.Fields{"Action": "Execute Template"})
-	l.Info("Execute search template...")
-	tmpl.Execute(w, art)
-} */
-
-// searchhandler v2 -> more efficient removes need for results handler
+// searchhandler -> search page, results, edit btn
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	l := log.WithFields(log.Fields{"IN": "Search Handler"})
@@ -266,21 +219,17 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			Success bool
 			Body    Page
 		}{false, art})
+
 		l.Info()
 		return
 	} else {
-		//wrap what im doing below from line 266 with get form input and exec template here*
-
-		// filled form with results
+		// handle form with results
 		l = l.WithField("action", "search form results, search.html")
 
 		// get form input values
-		priceValue := r.FormValue("price")
-		titleValue := r.FormValue("title")
-		artistValue := r.FormValue("artist")
-
 		var price float32
 		var err error
+		priceValue := r.FormValue("price")
 
 		// if priceValue input, format priceValue to float32
 		if priceValue != "" {
@@ -289,51 +238,55 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			price = float32(prc)
 		}
 
-		// prep album struct detail
+		// save all input form values in album struct
 		details := Album{
-			Title: titleValue, Artist: artistValue, Price: price,
+			Title: r.FormValue("title"), Artist: r.FormValue("artist"), Price: price,
 		}
 
 		var albumResult []Album
-		var albMapResult map[string]interface{} // returns mapped key:value pairs for better processing of results
+		var albumResultMap map[string]interface{} // returns mapped key:value pairs for better processing of results
 
-		// conditional data search results in albumResult slice
+		// conditional data search results in albumResult slice: TODO: use switch statement
 		//if we have a price, we must have either artist or title data for search
 		if details.Price > 0.00 {
 			//if price + artist
 			if details.Artist != "" {
 				l = l.WithField("where", "price + artist search")
-				pArt, err := albumPriceArtist(details.Price, details.Artist)
+				pArt, pArtMap, err := albumPriceArtist(details.Price, details.Artist)
 				check(err, "in price + artist search")
 				l = l.WithField("price+artist res", pArt)
 				// convert p to album slice
-				albumResult = []Album{pArt}
-				l.Info("albMapResult: ", albMapResult)
+				albumResult = pArt
+				albumResultMap = pArtMap
+				l.Info("albMapResult: ", albumResultMap)
 			} else {
 				//else its price only search
 				l = l.WithField("where", "at price only search")
 				priceOnly, err := albumByPrice(details.Price)
 				check(err, "in price only search")
 				albumResult = []Album{priceOnly}
-				l.Info("albMapResult: ", albMapResult)
+				albumResult = []Album{priceOnly}
+				l.Info("albMapResult: ", albumResultMap)
 			}
 		} else if details.Title != "" {
 			//TITLE ONLY
 			l = l.WithField("where", "title only search")
 			albumResult, err = albumsSearch(details.Title)
 			check(err, "in title only search")
-			l.Info("albMapResult: ", albMapResult)
+			l.Info("albMapResult: ", albumResultMap)
 		} else if details.Artist != "" {
 			//ARTIST ONLY
 			l = l.WithField("where", "artist only search")
-			albumResult, albMapResult, err = albumsByArtist(details.Artist)
+			albumResult, albumResultMap, err = albumsByArtist(details.Artist)
 			check(err, "in album only search")
-			l.Info("testing albumMapResult", albMapResult)
+			l.Info("testing albumMapResult", albumResultMap)
 		}
 
 		/* l.Info("(map not be blank ) albumResult: ", albumResult)
 		l.Info("albMapResult: ", albMapResult) */
-
+		if len(albumResult) == 0 {
+			l.Warn("albumResult shouldnt be blank at this point. expect errors.")
+		}
 		// put page data in page struct, in slices
 		pageInfo := Page{
 			Titles: []string{details.Title},
@@ -351,7 +304,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			ResultArtist interface{}
 			ResultPrice  interface{}
 			ResultID     interface{}
-		}{true, pageInfo, albMapResult, albMapResult["Title"], albMapResult["Artist"], albMapResult["Price"], albMapResult["ID"]})
+		}{true, pageInfo, albumResultMap, albumResultMap["Title"], albumResultMap["Artist"], albumResultMap["Price"], albumResultMap["ID"]})
 
 		l.Info("Parsed & exec search results. ")
 	}
@@ -627,22 +580,40 @@ func albumPriceTitle(price float32, title string) (Album, error) {
 }
 
 // albumByPriceArtist queries for album by price+artist.
-func albumPriceArtist(price float32, artist string) (Album, error) {
+func albumPriceArtist(price float32, artist string) ([]Album, map[string]interface{}, error) {
 	// An album to hold data from the returned row.
-	var alb Album
+	var albums []Album
+	var albMap map[string]interface{}
 	l := log.WithFields(log.Fields{"In": "albumPriceArtist()", "price": price, "artist": artist})
-	l.Info(" queue the orchestra...")
+	l.Info("Queue the orchestra...")
 
-	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+	rows, err := db.Query("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
+	//if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price)
+	if err != nil {
 		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumPriceArtist %f: no such album", price)
+			return nil, nil, fmt.Errorf("albumPriceArtist %f: no such album", price)
 		}
-		return alb, fmt.Errorf("albumPriceArtist %f: %v", price, err)
+		return nil, nil, fmt.Errorf("albumPriceArtist %f: %v", price, err)
 	}
-	l = l.WithFields(log.Fields{"albumPriceArtist() result": alb})
+	defer rows.Close()
+
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+		}
+		albums = append(albums, alb)
+		albMap = map[string]interface{}{
+			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+	}
+	l = l.WithFields(log.Fields{"albumPriceArtist() result": albums})
 	l.Info("grammies are in...")
-	return alb, nil
+	return albums, albMap, nil
 }
 
 // allAlbumPrices - returns album price List
