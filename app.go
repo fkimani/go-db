@@ -89,21 +89,21 @@ func main() {
 	   	}
 	   	fmt.Println("results: ", ed) */
 	//{19 Lessons Umfundissssi 2}
-	alb := Album{
-		ID:     19,
-		Title:  "Lessons",
-		Artist: "Umfundisi",
-		Price:  2.29,
-	}
-	a, b, _ := updateAlbum(alb)
-	fmt.Println(a, "; rows returned", b)
+	/* 	alb := Album{
+	   		ID:     19,
+	   		Title:  "Lessons",
+	   		Artist: "Umfundisi",
+	   		Price:  2.29,
+	   	}
+	   	a, b, _ := updateAlbum(alb)
+	   	fmt.Println(a, "; rows returned", b) */
 
 	//END TEST
 
 	//http call handler:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/add", addHandler)
-	http.HandleFunc("/delete", deleteHandler)
+	// http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/dump", dumpHandler)
 	http.HandleFunc("/test", testHandler)
 	http.HandleFunc("/edit", editHandler)
@@ -350,7 +350,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		}{false, art})
 
 		l.Info()
-		return
+		//return
 	} else {
 		// handle form with results
 		l = l.WithField("action", "search form results, search.html")
