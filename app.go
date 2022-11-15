@@ -2,12 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/go-sql-driver/mysql"
@@ -25,6 +27,14 @@ type Album struct {
 	Title  string
 	Artist string
 	Price  float32
+}
+
+// AlbumMap struct with keys that are json tag names
+type AlbumMap struct {
+	ID     float32 `json:"id"`
+	Title  string  `json:"title"`
+	Artist string  `json:"artist"`
+	Price  int64   `json:"price"`
 }
 
 // Page structure
@@ -78,6 +88,16 @@ func main() {
 	   		l.Fatalf("cant edit bcoz: %v", err)
 	   	}
 	   	fmt.Println("results: ", ed) */
+	//{19 Lessons Umfundissssi 2}
+	alb := Album{
+		ID:     19,
+		Title:  "Lessons",
+		Artist: "Umfundisi",
+		Price:  2.29,
+	}
+	a, b, _ := updateAlbum(alb)
+	fmt.Println(a, "; rows returned", b)
+
 	//END TEST
 
 	//http call handler:
@@ -122,6 +142,115 @@ func albumsByArtist(name string) ([]Album, map[string]interface{}, error) {
 	}
 	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
 	l.Info()
+	return albums, albMap, nil
+}
+
+// album search by title of album
+func albumsByName(name string) ([]Album, AlbumMap, error) {
+	// An albums slice to hold data from returned rows.
+	var albums []Album
+	var albMaps AlbumMap
+
+	l := log.WithFields(log.Fields{"func": "albumsByName()", "title": name})
+
+	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
+	if err != nil {
+		return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+		}
+		albums = append(albums, alb)
+		// aID := alb.ID
+		albMaps = AlbumMap{
+			ID: float32(alb.ID), Title: alb.Title, Artist: alb.Artist, Price: int64(alb.Price),
+		}
+
+	}
+	if err := rows.Err(); err != nil {
+		return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+	}
+	l = l.WithFields(log.Fields{"Result": albums})
+	l.Info()
+	return albums, albMaps, nil
+}
+
+// albumsByPrice queries for the album by price.
+func albumsByPrice(price float32) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumsByPrice()", "price": price})
+
+	//db query - Note: converting price to string for query
+	row := db.QueryRow("SELECT * FROM album WHERE price = ?; ", fmt.Sprint(price))
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
+		}
+		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
+	}
+	l = l.WithFields(log.Fields{"Album result": alb})
+	l.Info()
+	return alb, nil
+}
+
+// albumsByPriceTitle queries for album by price+title. --not in use i dont think
+func albumsByPriceTitle(price float32, title string) (Album, error) {
+	// An album to hold data from the returned row.
+	var alb Album
+	l := log.WithFields(log.Fields{"In": "albumsByPrice()", "price": price})
+
+	//db query - Note: converting price to string for query
+	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND title = ?; ", fmt.Sprint(price), title)
+	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+		if err == sql.ErrNoRows {
+			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
+		}
+		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
+	}
+	l = l.WithFields(log.Fields{"Album result": alb})
+	l.Info()
+	return alb, nil
+}
+
+// albumsByPriceArtist queries for album by price+artist.
+func albumsByPriceArtist(price float32, artist string) ([]Album, map[string]interface{}, error) {
+	// An album to hold data from the returned row.
+	var albums []Album
+	var albMap map[string]interface{}
+	l := log.WithFields(log.Fields{"In": "albumsByPriceArtist()", "price": price, "artist": artist})
+	l.Info("Queue the orchestra...")
+
+	rows, err := db.Query("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
+	//if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, fmt.Errorf("albumsByPriceArtist %f: no such album", price)
+		}
+		return nil, nil, fmt.Errorf("albumsByPriceArtist %f: %v", price, err)
+	}
+	defer rows.Close()
+
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb Album
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+		}
+		albums = append(albums, alb)
+		albMap = map[string]interface{}{
+			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+	}
+	l = l.WithFields(log.Fields{"albumsByPriceArtist() result": albums})
+	l.Info("grammies are in...")
 	return albums, albMap, nil
 }
 
@@ -245,14 +374,14 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 		var albumResult []Album
 		var albumResultMap map[string]interface{} // returns mapped key:value pairs for better processing of results
-
+		// var albumResultMap AlbumMap
 		// conditional data search results in albumResult slice: TODO: use switch statement
 		//if we have a price, we must have either artist or title data for search
 		if details.Price > 0.00 {
 			//if price + artist
 			if details.Artist != "" {
 				l = l.WithField("where", "price + artist search")
-				pArt, pArtMap, err := albumPriceArtist(details.Price, details.Artist)
+				pArt, pArtMap, err := albumsByPriceArtist(details.Price, details.Artist)
 				check(err, "in price + artist search")
 				l = l.WithField("price+artist res", pArt)
 				// convert p to album slice
@@ -262,7 +391,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				//else its price only search
 				l = l.WithField("where", "at price only search")
-				priceOnly, err := albumByPrice(details.Price)
+				priceOnly, err := albumsByPrice(details.Price)
 				check(err, "in price only search")
 				albumResult = []Album{priceOnly}
 				albumResult = []Album{priceOnly}
@@ -271,7 +400,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		} else if details.Title != "" {
 			//TITLE ONLY
 			l = l.WithField("where", "title only search")
-			albumResult, err = albumsSearch(details.Title)
+			albumResult, _, err = albumsByName(details.Title) //TODO: _:albumResultMap
 			check(err, "in title only search")
 			l.Info("albMapResult: ", albumResultMap)
 		} else if details.Artist != "" {
@@ -331,6 +460,82 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	} */
 
+}
+
+// editHandler
+func editHandler(w http.ResponseWriter, r *http.Request) {
+	l := log.WithFields(log.Fields{"In": "editHandler()"})
+	l.Info()
+
+	// vars from search results/edit input
+	editid, _ := strconv.Atoi(r.FormValue("id"))
+	id := int64(editid)
+
+	editPrice, _ := strconv.ParseFloat(r.FormValue("price"), 32)
+	price := float32(editPrice)
+
+	details := Album{
+		id, r.FormValue("title"), r.FormValue("artist"), price,
+	}
+	//parse template
+	tmpl, err := template.ParseFiles("templates/edit.html")
+	if err != nil {
+		l.Fatalf("edit template errors %v", err)
+	}
+	l.Info("Template parsed")
+	// price check
+	priceStr := r.FormValue("price")
+	l.Info("priceStr,", priceStr)
+	//var price float32
+	// var err error
+
+	// if price is passed
+	/* 	if priceStr != "" {
+	   		// convert string to float64
+	   		priceValue, err := strconv.ParseFloat(priceStr, 32)
+	   		if err != nil {
+	   			l.WithFields(log.Fields{"value": priceValue, "error": err})
+	   			l.Fatal(err)
+	   		}
+	   		// format 2 Decimal places
+	   		priceValue = math.Round(100*priceValue) / 100
+	   		// format to float32
+	   		price = float32(priceValue)
+	   		l = l.WithFields(log.Fields{"price": price})
+	   		l.Info("Price is right. ")
+	   	}
+	   	//put artist, title and price values in struct
+	   	details := Album{
+	   		Title:  r.FormValue("title"),
+	   		Artist: r.FormValue("artist"),
+	   		Price:  price,
+	   	}
+	   	l.Infof("details: %v", details)
+	*/
+	// if details has data, exec template
+	if details.Title != "" || details.Artist != "" || details.Price > 0.0 {
+		l.Infof("Show details %v: ", details)
+		// run db process here to update table.
+		resp, count, err := updateAlbum(details)
+		if err != nil {
+			l.Fatalf("%v ", err)
+		}
+		res, _ := json.Marshal(resp)
+		l.Info("result marshalled to json %v")
+		//then execute template
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+			Count   int64
+		}{true, fmt.Sprintf("Success updating %v", string(res)), count})
+	} else {
+		l.Infof("when no details: %v", details)
+		// edit page when nothing to edit
+		tmpl.Execute(w, struct {
+			Success bool
+			Message string
+		}{false, "Nothing to edit. Try something else!"})
+	}
 }
 
 // addHandler - handler for add action
@@ -513,109 +718,6 @@ func allAlbumNames() ([]string, error) {
 	return res, nil
 }
 
-// album search by title of album
-func albumsSearch(name string) ([]Album, error) {
-	// An albums slice to hold data from returned rows.
-	var albums []Album
-
-	l := log.WithFields(log.Fields{"func": "albumsSearch()", "title": name})
-
-	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
-	if err != nil {
-		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-	}
-	defer rows.Close()
-	// Loop through rows, using Scan to assign column data to struct fields.
-	for rows.Next() {
-		var alb Album
-		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-		}
-		albums = append(albums, alb)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsSearch %q: %v", name, err)
-	}
-	l = l.WithFields(log.Fields{"Result": albums})
-	l.Info()
-	return albums, nil
-}
-
-// albumByPrice queries for the album by price.
-func albumByPrice(price float32) (Album, error) {
-	// An album to hold data from the returned row.
-	var alb Album
-	l := log.WithFields(log.Fields{"In": "albumByPrice()", "price": price})
-
-	//db query - Note: converting price to string for query
-	row := db.QueryRow("SELECT * FROM album WHERE price = ?; ", fmt.Sprint(price))
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
-		}
-		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
-	}
-	l = l.WithFields(log.Fields{"Album result": alb})
-	l.Info()
-	return alb, nil
-}
-
-// albumByPriceTitle queries for album by price+title. --not in use i dont think
-func albumPriceTitle(price float32, title string) (Album, error) {
-	// An album to hold data from the returned row.
-	var alb Album
-	l := log.WithFields(log.Fields{"In": "albumByPrice()", "price": price})
-
-	//db query - Note: converting price to string for query
-	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND title = ?; ", fmt.Sprint(price), title)
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
-		}
-		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
-	}
-	l = l.WithFields(log.Fields{"Album result": alb})
-	l.Info()
-	return alb, nil
-}
-
-// albumByPriceArtist queries for album by price+artist.
-func albumPriceArtist(price float32, artist string) ([]Album, map[string]interface{}, error) {
-	// An album to hold data from the returned row.
-	var albums []Album
-	var albMap map[string]interface{}
-	l := log.WithFields(log.Fields{"In": "albumPriceArtist()", "price": price, "artist": artist})
-	l.Info("Queue the orchestra...")
-
-	rows, err := db.Query("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
-	//if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil, fmt.Errorf("albumPriceArtist %f: no such album", price)
-		}
-		return nil, nil, fmt.Errorf("albumPriceArtist %f: %v", price, err)
-	}
-	defer rows.Close()
-
-	// Loop through rows, using Scan to assign column data to struct fields.
-	for rows.Next() {
-		var alb Album
-		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
-		}
-		albums = append(albums, alb)
-		albMap = map[string]interface{}{
-			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
-	}
-	l = l.WithFields(log.Fields{"albumPriceArtist() result": albums})
-	l.Info("grammies are in...")
-	return albums, albMap, nil
-}
-
 // allAlbumPrices - returns album price List
 func allAlbumPrices() ([]float32, error) {
 	var res []float32
@@ -747,107 +849,29 @@ func genericQuery(cmd string) ([]Album, error) {
 	return albums, nil
 }
 
-// updateAlbum edits specified album stored the database, returns album ID / new entry
-func updateAlbum(alb Album, editText string) (int64, error) {
-	// cmd := fmt.Sprintf("UPDATE items,month SET items.price=month.price WHERE items.id=month.id;"
-	// cmd := fmt.Sprintf("UPDATE items,alb SET items.title=alb.title WHERE items.id=alb.id;")
-	//scenario: {19, Lessons, Umfundizi, 2} from results for "umfundizi" search with goal to edit this name
-	/* 	alb = Album{19, "Lessons", "Umfundizi", 2}
-	   	editText := "Umfundisi" */
-	l := log.WithFields(log.Fields{"In": "editAlbum()", "editing": editText, "by": alb.Artist})
+// updateAlbum edits specified album
+// preconditions: editable album struct passed
+// postconditions: updated album & updated row count have been returned
+func updateAlbum(alb Album) (Album, int64, error) {
+	l := log.WithFields(log.Fields{"In": "updateAlbum()", "id editing": alb.ID, "by": alb.Artist})
 	l.Infof("ID:%v, Title:%v, Artist:%v, Price:$%v ", alb.ID, alb.Title, alb.Artist, alb.Price)
-	// cmd := fmt.Sprintf("UPDATE recordings.album SET artist=%v WHERE artist=%v AND ID=%v;", editText, alb.Artist, alb.ID)
-	// result, err := db.Exec("INSERT INTO album (title, artist, price) VALUES (?, ?, ?)", alb.Title, alb.Artist, alb.Price)
-	result, err := db.Exec("UPDATE album SET artist=? WHERE artist=? AND title=?;", editText, alb.Artist, alb.Title)
+	if alb.Title == "" || alb.Artist == "" {
+		l.Fatal("Artist/title fields required to edit record. %v")
+	}
+	//title case
+	alb.Title = strings.Title(strings.ToLower(alb.Title))
+	alb.Artist = strings.Title(strings.ToLower(alb.Artist))
+
+	//DB exec
+	result, err := db.Exec("UPDATE album SET title=?,artist=?, price=? WHERE ID=?;", alb.Title, alb.Artist, alb.Price, alb.ID)
 	if err != nil {
-		return 0, fmt.Errorf("editAlbum: %v", err)
+		return Album{}, 0, fmt.Errorf("editAlbum: %v", err)
 	}
 	// rows returns the number of rows affected by an update
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("editAlbum: %v", err)
+		return Album{}, 0, fmt.Errorf("editAlbum: %v", err)
 	}
-	l.Infof("%v row(s) updated", rows)
-	return rows, nil
-}
-
-// editHandler
-func editHandler(w http.ResponseWriter, r *http.Request) {
-	l := log.WithFields(log.Fields{"In": "editHandler()"})
-	l.Info()
-
-	// vars from search results/edit input
-	editid, _ := strconv.Atoi(r.FormValue("id"))
-	id := int64(editid)
-
-	editPrice, _ := strconv.ParseFloat(r.FormValue("price"), 32)
-	price := float32(editPrice)
-
-	details := Album{
-		id, r.FormValue("title"), r.FormValue("artist"), price,
-	}
-	//parse template
-	tmpl, err := template.ParseFiles("templates/edit.html")
-	if err != nil {
-		l.Fatalf("edit template errors %v", err)
-	}
-	l.Info("Template parsed")
-	// price check
-	priceStr := r.FormValue("price")
-	l.Info("priceStr,", priceStr)
-	//var price float32
-	// var err error
-
-	// if price is passed
-	/* 	if priceStr != "" {
-	   		// convert string to float64
-	   		priceValue, err := strconv.ParseFloat(priceStr, 32)
-	   		if err != nil {
-	   			l.WithFields(log.Fields{"value": priceValue, "error": err})
-	   			l.Fatal(err)
-	   		}
-	   		// format 2 Decimal places
-	   		priceValue = math.Round(100*priceValue) / 100
-	   		// format to float32
-	   		price = float32(priceValue)
-	   		l = l.WithFields(log.Fields{"price": price})
-	   		l.Info("Price is right. ")
-	   	}
-	   	//put artist, title and price values in struct
-	   	details := Album{
-	   		Title:  r.FormValue("title"),
-	   		Artist: r.FormValue("artist"),
-	   		Price:  price,
-	   	}
-	   	l.Infof("details: %v", details)
-	*/
-	// if details has data, exec template
-	if details.Title != "" || details.Artist != "" || details.Price > 0.0 {
-		// var editText string = "Umfundisi" //TODO get value passed not hardcoded
-		editText := details.Artist
-
-		l.Infof("Show details %v: ", details)
-		// run db process here to update table.
-		resp, err := updateAlbum(details, editText)
-		if err != nil {
-			l.Fatalf("%v ", err)
-		}
-		l.Infof("do we ever get here? details: %v", details)
-		//then execute template
-		tmpl.Execute(w, struct {
-			Success   bool
-			Message   string
-			Title     string
-			Artist    string
-			Price     float32
-			Submitted Album
-		}{true, fmt.Sprintf("Success updating %v", resp), details.Title, details.Artist, details.Price, details})
-	} else {
-		l.Infof("when no details: %v", details)
-		// edit page when nothing to edit
-		tmpl.Execute(w, struct {
-			Success bool
-			Message string
-		}{false, "Nothing to edit. Try something else!"})
-	}
+	l.Infof("%v row(s) updated. View Record: %v ", rows, alb)
+	return alb, rows, nil
 }
