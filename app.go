@@ -99,6 +99,8 @@ func main() {
 	   	fmt.Println(a, "; rows returned", b) */
 
 	//END TEST
+	albt, amap, _ := albumsByTitle("Giant Steps")
+	fmt.Println(albt, ",", amap.ID, ",", amap.Title)
 
 	//http call handler:
 	http.HandleFunc("/", searchHandler)
@@ -146,23 +148,23 @@ func albumsByArtist(name string) ([]Album, map[string]interface{}, error) {
 }
 
 // album search by title of album
-func albumsByName(name string) ([]Album, AlbumMap, error) {
+func albumsByTitle(title string) ([]Album, AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
 	var albums []Album
 	var albMaps AlbumMap
 
-	l := log.WithFields(log.Fields{"func": "albumsByName()", "title": name})
+	l := log.WithFields(log.Fields{"func": "albumsByTitle()", "title": title})
 
-	rows, err := db.Query("SELECT * FROM album WHERE title = ?", name)
+	rows, err := db.Query("SELECT * FROM album WHERE title = ?", title)
 	if err != nil {
-		return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+		return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
 		var alb Album
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+			return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
 		}
 		albums = append(albums, alb)
 		// aID := alb.ID
@@ -172,10 +174,10 @@ func albumsByName(name string) ([]Album, AlbumMap, error) {
 
 	}
 	if err := rows.Err(); err != nil {
-		return nil, albMaps, fmt.Errorf("albumsByName %q: %v", name, err)
+		return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
 	}
 	l = l.WithFields(log.Fields{"Result": albums})
-	l.Info()
+	l.Info("albMaps", albMaps)
 	return albums, albMaps, nil
 }
 
@@ -400,7 +402,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		} else if details.Title != "" {
 			//TITLE ONLY
 			l = l.WithField("where", "title only search")
-			albumResult, _, err = albumsByName(details.Title) //TODO: _:albumResultMap
+			albumResult, albumResultMapv2, err = albumsByTitle(details.Title) //TODO: _:albumResultMap
 			check(err, "in title only search")
 			l.Info("albMapResult: ", albumResultMap)
 		} else if details.Artist != "" {
@@ -437,28 +439,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 		l.Info("Parsed & exec search results. ")
 	}
-
-	/* // artistvalue as the test
-	if artistValue != "" {
-		details := Album{
-			Title:  titleValue,
-			Price:  price,
-			Artist: artistValue,
-		}
-		tmpl.Execute(w, struct {
-			Success bool
-			Body    Album
-		}{
-			true, details,
-		})
-	} else {
-		tmpl.Execute(w, struct {
-			Success bool
-			Message string
-		}{
-			true, "successful",
-		})
-	} */
 
 }
 
