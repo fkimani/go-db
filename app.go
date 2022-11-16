@@ -441,9 +441,9 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 		// execute template with search results
 		tmpl.Execute(w, struct {
-			Success bool
-			Body    Page
-			AlbMap  []AlbumMap
+			Success  bool
+			Body     Page
+			AlbumMap []AlbumMap
 			// AlbumMap     map[string]interface{}
 			// ResultTitle  interface{}
 			// ResultArtist interface{}
