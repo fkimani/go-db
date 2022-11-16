@@ -40,7 +40,7 @@ type AlbumMap struct {
 // Page structure
 type Page struct {
 	Titles []string
-	Body   []Album
+	Body   []AlbumMap
 	Price  []float32
 	Names  []string
 }
@@ -99,8 +99,9 @@ func main() {
 	   	fmt.Println(a, "; rows returned", b) */
 
 	//END TEST
-	albt, amap, _ := albumsByTitle("Giant Steps")
-	fmt.Println(albt, ",", amap.ID, ",", amap.Title)
+	amap, _ := albumsByTitle("Giant Steps")
+	fmt.Println("albumsByTitle/ amap: ", amap)
+	// fmt.Println( amap.ID, ",", amap.Title)
 
 	//http call handler:
 	http.HandleFunc("/", searchHandler)
@@ -118,73 +119,63 @@ func main() {
 }
 
 // albumsByArtist queries for albums that have the specified artist name.
-func albumsByArtist(name string) ([]Album, map[string]interface{}, error) {
+func albumsByArtist(name string) ([]AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
-	var albums []Album
-	var albMap map[string]interface{} //use case is mapped key:value db result
+	var albums []AlbumMap
 
 	rows, err := db.Query("SELECT * FROM album WHERE artist = ?", name)
 	if err != nil {
-		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Album
+		var alb AlbumMap
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+			return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 		}
 		albums = append(albums, alb)
-		albMap = map[string]interface{}{
-			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
-		}
+
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
 	l.Info()
-	return albums, albMap, nil
+	return albums, nil
 }
 
 // album search by title of album
-func albumsByTitle(title string) ([]Album, AlbumMap, error) {
+func albumsByTitle(title string) ([]AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
-	var albums []Album
-	var albMaps AlbumMap
-
+	var album []AlbumMap
 	l := log.WithFields(log.Fields{"func": "albumsByTitle()", "title": title})
 
 	rows, err := db.Query("SELECT * FROM album WHERE title = ?", title)
 	if err != nil {
-		return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
+		return album, fmt.Errorf("albumsByTitle %q: %v", title, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Album
+		var alb AlbumMap //keep track of current album and add it to album map
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
+			return album, fmt.Errorf("albumsByTitle %q: %v", title, err)
 		}
-		albums = append(albums, alb)
-		// aID := alb.ID
-		albMaps = AlbumMap{
-			ID: float32(alb.ID), Title: alb.Title, Artist: alb.Artist, Price: int64(alb.Price),
-		}
-
+		album = append(album, alb)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, albMaps, fmt.Errorf("albumsByTitle %q: %v", title, err)
+		return album, fmt.Errorf("albumsByTitle %q: %v", title, err)
 	}
-	l = l.WithFields(log.Fields{"Result": albums})
-	l.Info("albMaps", albMaps)
-	return albums, albMaps, nil
+	l = l.WithFields(log.Fields{"Result": album})
+	l.Info("album", album)
+	return album, nil
 }
 
 // albumsByPrice queries for the album by price.
-func albumsByPrice(price float32) (Album, error) {
+/* func albumsByPrice(price float32) ([]AlbumMap, error) {
 	// An album to hold data from the returned row.
-	var alb Album
+	var albums []AlbumMap
 	l := log.WithFields(log.Fields{"In": "albumsByPrice()", "price": price})
 
 	//db query - Note: converting price to string for query
@@ -197,7 +188,33 @@ func albumsByPrice(price float32) (Album, error) {
 	}
 	l = l.WithFields(log.Fields{"Album result": alb})
 	l.Info()
-	return alb, nil
+	return albums, nil
+} */
+
+func albumsByPrice(price float32) ([]AlbumMap, error) {
+	// An albums slice to hold data from returned rows.
+	var album []AlbumMap
+	l := log.WithFields(log.Fields{"func": "albumsByprice()", "price": price})
+
+	rows, err := db.Query("SELECT * FROM album WHERE price = ?", price) //
+	if err != nil {
+		return album, fmt.Errorf("albumsByprice %v: %v", price, err)
+	}
+	defer rows.Close()
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb AlbumMap //keep track of current album and add it to album map
+		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
+			return album, fmt.Errorf("albumsByprice %v: %v", price, err)
+		}
+		album = append(album, alb)
+	}
+	if err := rows.Err(); err != nil {
+		return album, fmt.Errorf("albumsByprice %v: %v", price, err)
+	}
+	l = l.WithFields(log.Fields{"Result": album})
+	l.Info("album", album)
+	return album, nil
 }
 
 // albumsByPriceTitle queries for album by price+title. --not in use i dont think
@@ -220,10 +237,9 @@ func albumsByPriceTitle(price float32, title string) (Album, error) {
 }
 
 // albumsByPriceArtist queries for album by price+artist.
-func albumsByPriceArtist(price float32, artist string) ([]Album, map[string]interface{}, error) {
+func albumsByPriceArtist(price float32, artist string) ([]AlbumMap, error) {
 	// An album to hold data from the returned row.
-	var albums []Album
-	var albMap map[string]interface{}
+	var albums []AlbumMap
 	l := log.WithFields(log.Fields{"In": "albumsByPriceArtist()", "price": price, "artist": artist})
 	l.Info("Queue the orchestra...")
 
@@ -231,29 +247,27 @@ func albumsByPriceArtist(price float32, artist string) ([]Album, map[string]inte
 	//if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil, fmt.Errorf("albumsByPriceArtist %f: no such album", price)
+			return nil, fmt.Errorf("albumsByPriceArtist %f: no such album", price)
 		}
-		return nil, nil, fmt.Errorf("albumsByPriceArtist %f: %v", price, err)
+		return nil, fmt.Errorf("albumsByPriceArtist %f: %v", price, err)
 	}
 	defer rows.Close()
 
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Album
+		var alb AlbumMap
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+			return nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
 		}
 		albums = append(albums, alb)
-		albMap = map[string]interface{}{
-			"ID": alb.ID, "Title": alb.Title, "Artist": alb.Artist, "Price": alb.Price,
-		}
+
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
+		return nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
 	}
 	l = l.WithFields(log.Fields{"albumsByPriceArtist() result": albums})
 	l.Info("grammies are in...")
-	return albums, albMap, nil
+	return albums, nil
 }
 
 // albumByID queries for the album with the specified ID.
@@ -374,41 +388,40 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			Title: r.FormValue("title"), Artist: r.FormValue("artist"), Price: price,
 		}
 
-		var albumResult []Album
-		var albumResultMap map[string]interface{} // returns mapped key:value pairs for better processing of results
-		// var albumResultMap AlbumMap
+		var albumResult []AlbumMap
+		// var albumResultMap map[string]interface{} // returns mapped key:value pairs for better processing of results
+		var albumResultMap []AlbumMap
 		// conditional data search results in albumResult slice: TODO: use switch statement
 		//if we have a price, we must have either artist or title data for search
 		if details.Price > 0.00 {
 			//if price + artist
 			if details.Artist != "" {
 				l = l.WithField("where", "price + artist search")
-				pArt, pArtMap, err := albumsByPriceArtist(details.Price, details.Artist)
+				pArt, err := albumsByPriceArtist(details.Price, details.Artist)
 				check(err, "in price + artist search")
 				l = l.WithField("price+artist res", pArt)
 				// convert p to album slice
 				albumResult = pArt
-				albumResultMap = pArtMap
 				l.Info("albMapResult: ", albumResultMap)
 			} else {
 				//else its price only search
 				l = l.WithField("where", "at price only search")
 				priceOnly, err := albumsByPrice(details.Price)
 				check(err, "in price only search")
-				albumResult = []Album{priceOnly}
-				albumResult = []Album{priceOnly}
+				// albumResult = []Album{priceOnly}
+				albumResultMap = priceOnly
 				l.Info("albMapResult: ", albumResultMap)
 			}
 		} else if details.Title != "" {
 			//TITLE ONLY
 			l = l.WithField("where", "title only search")
-			albumResult, albumResultMapv2, err = albumsByTitle(details.Title) //TODO: _:albumResultMap
+			albumResult, err = albumsByTitle(details.Title) //TODO: _:albumResultMap
 			check(err, "in title only search")
 			l.Info("albMapResult: ", albumResultMap)
 		} else if details.Artist != "" {
 			//ARTIST ONLY
 			l = l.WithField("where", "artist only search")
-			albumResult, albumResultMap, err = albumsByArtist(details.Artist)
+			albumResult, err = albumsByArtist(details.Artist)
 			check(err, "in album only search")
 			l.Info("testing albumMapResult", albumResultMap)
 		}
@@ -428,14 +441,15 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 		// execute template with search results
 		tmpl.Execute(w, struct {
-			Success      bool
-			Body         Page
-			AlbumMap     map[string]interface{}
-			ResultTitle  interface{}
-			ResultArtist interface{}
-			ResultPrice  interface{}
-			ResultID     interface{}
-		}{true, pageInfo, albumResultMap, albumResultMap["Title"], albumResultMap["Artist"], albumResultMap["Price"], albumResultMap["ID"]})
+			Success bool
+			Body    Page
+			AlbMap  []AlbumMap
+			// AlbumMap     map[string]interface{}
+			// ResultTitle  interface{}
+			// ResultArtist interface{}
+			// ResultPrice  interface{}
+			// ResultID     interface{}
+		}{true, pageInfo, albumResultMap})
 
 		l.Info("Parsed & exec search results. ")
 	}
@@ -775,9 +789,9 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // dataDump
-func dataDump() ([]Album, error) {
+func dataDump() ([]AlbumMap, error) {
 	//similar to album Name Search
-	var albums []Album
+	var albums []AlbumMap
 
 	l := log.WithFields(log.Fields{"Result": "dataDump()"})
 
@@ -788,7 +802,7 @@ func dataDump() ([]Album, error) {
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Album
+		var alb AlbumMap
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 			return nil, fmt.Errorf("dataDump(): %v", err)
 		}
