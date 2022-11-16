@@ -75,36 +75,24 @@ func main() {
 	l.Info("Connected!\n")
 
 	// TEST in MAIN
-	/* 	cmd := "SELECT * FROM album ORDER by artist LIMIT 50;"
-	   	q, er := genericQuery(cmd)
-	   	if er != nil {
-	   		l.Fatalf("bad generic Query %v", er)
-	   	}
-	   	l.Infof("Results of generic Query: %v", q) */
-	/* 	alb := Album{19, "Lessons", "Umfundisi", 2}
-	   	editText := "Umfundissssi"
-	   	ed, err := updateAlbum(alb, editText)
-	   	if err != nil {
-	   		l.Fatalf("cant edit bcoz: %v", err)
-	   	}
-	   	fmt.Println("results: ", ed) */
-	//{19 Lessons Umfundissssi 2}
-	/* 	alb := Album{
-	   		ID:     19,
-	   		Title:  "Lessons",
-	   		Artist: "Umfundisi",
-	   		Price:  2.29,
-	   	}
-	   	a, b, _ := updateAlbum(alb)
-	   	fmt.Println(a, "; rows returned", b) */
+	check := func(err error, at string) {
+		if err != nil {
+			log.Fatalf("\nERROR: %v; \nHAPPENED AT: %v", err, at)
+		}
+	}
+	a, err := albumsByArtist("John Coltrane")
+	check(err, "--> Artistsearch main")
+	fmt.Println(a)
 
 	//END TEST
-	amap, _ := albumsByTitle("Giant Steps")
-	fmt.Println("albumsByTitle/ amap: ", amap)
+
+	// amap, err := albumsByTitle("Giant Steps")
+	// check(err, "testing err in main...")
+	// fmt.Println("albumsByTitle/ amap: ", amap)
 	// fmt.Println( amap.ID, ",", amap.Title)
 
 	//http call handler:
-	http.HandleFunc("/", searchHandler)
+	/* http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/add", addHandler)
 	// http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/dump", dumpHandler)
@@ -114,35 +102,36 @@ func main() {
 		http.ServeFile(w, r, "styles/style.css")
 	})
 	l.Info("Serving http://localhost:8080")
-	l.Fatal(http.ListenAndServe(":8080", nil))
+	l.Fatal(http.ListenAndServe(":8080", nil)) */
 
 }
 
 // albumsByArtist queries for albums that have the specified artist name.
 func albumsByArtist(name string) ([]AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
-	var albums []AlbumMap
+	var album = []AlbumMap{}
+	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist"})
 
 	rows, err := db.Query("SELECT * FROM album WHERE artist = ?", name)
 	if err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return album, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
 		var alb AlbumMap
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+			return album, fmt.Errorf("albumsByArtist %q: %v", name, err)
 		}
-		albums = append(albums, alb)
+		album = append(album, alb)
 
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", name, err)
+		return []AlbumMap{}, fmt.Errorf("albumsByArtist %q: %v", name, err)
 	}
-	l := log.WithFields(log.Fields{"in": "albumsByArtist()", "Action": "Fetched albums by artist", "data": albums})
+	l = l.WithFields(log.Fields{"data": album})
 	l.Info()
-	return albums, nil
+	return album, nil
 }
 
 // album search by title of album
@@ -162,6 +151,7 @@ func albumsByTitle(title string) ([]AlbumMap, error) {
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 			return album, fmt.Errorf("albumsByTitle %q: %v", title, err)
 		}
+		fmt.Println("alb", alb)
 		album = append(album, alb)
 	}
 	if err := rows.Err(); err != nil {
@@ -197,6 +187,7 @@ func albumsByPrice(price float32) ([]AlbumMap, error) {
 	l := log.WithFields(log.Fields{"func": "albumsByprice()", "price": price})
 
 	rows, err := db.Query("SELECT * FROM album WHERE price = ?", price) //
+	// rows, err := db.Query("SELECT * FROM album WHERE price = ?", float64(price)) //
 	if err != nil {
 		return album, fmt.Errorf("albumsByprice %v: %v", price, err)
 	}
@@ -389,41 +380,40 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var albumResult []AlbumMap
-		// var albumResultMap map[string]interface{} // returns mapped key:value pairs for better processing of results
-		var albumResultMap []AlbumMap
+		//var albumResultMap []AlbumMap
 		// conditional data search results in albumResult slice: TODO: use switch statement
 		//if we have a price, we must have either artist or title data for search
 		if details.Price > 0.00 {
 			//if price + artist
 			if details.Artist != "" {
 				l = l.WithField("where", "price + artist search")
-				pArt, err := albumsByPriceArtist(details.Price, details.Artist)
+				p, err := albumsByPriceArtist(details.Price, details.Artist)
 				check(err, "in price + artist search")
-				l = l.WithField("price+artist res", pArt)
+				l = l.WithField("price+artist res", p)
 				// convert p to album slice
-				albumResult = pArt
-				l.Info("albMapResult: ", albumResultMap)
+				albumResult = p
+				l.Info("albMapResult: ", albumResult)
 			} else {
 				//else its price only search
 				l = l.WithField("where", "at price only search")
 				priceOnly, err := albumsByPrice(details.Price)
 				check(err, "in price only search")
 				// albumResult = []Album{priceOnly}
-				albumResultMap = priceOnly
-				l.Info("albMapResult: ", albumResultMap)
+				albumResult = priceOnly
+				l.Info("albMapResult: ", albumResult)
 			}
 		} else if details.Title != "" {
 			//TITLE ONLY
 			l = l.WithField("where", "title only search")
 			albumResult, err = albumsByTitle(details.Title) //TODO: _:albumResultMap
 			check(err, "in title only search")
-			l.Info("albMapResult: ", albumResultMap)
+			l.Info("albumResult: ", albumResult)
 		} else if details.Artist != "" {
 			//ARTIST ONLY
 			l = l.WithField("where", "artist only search")
 			albumResult, err = albumsByArtist(details.Artist)
 			check(err, "in album only search")
-			l.Info("testing albumMapResult", albumResultMap)
+			l.Info("testing albumResult", albumResult)
 		}
 
 		/* l.Info("(map not be blank ) albumResult: ", albumResult)
@@ -449,7 +439,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			// ResultArtist interface{}
 			// ResultPrice  interface{}
 			// ResultID     interface{}
-		}{true, pageInfo, albumResultMap})
+		}{true, pageInfo, albumResult})
 
 		l.Info("Parsed & exec search results. ")
 	}
