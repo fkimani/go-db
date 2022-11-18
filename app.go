@@ -81,33 +81,28 @@ func main() {
 			log.Fatalf("\nERROR: %v; \nHAPPENED AT: %v", err, at)
 		}
 	}
-		a, err := albumsByArtist("John Coltrane")
-	   	check(err, "--> main albumsByArtist search")
-	   	fmt.Println("albumsByArtist John Coltrane:", a)
+	a, err := albumsByArtist("John Coltrane")
+	check(err, "--> main albumsByArtist search")
+	fmt.Println("albumsByArtist John Coltrane:", a)
 
-	   	d, err := albumByID(1)
-	   	check(err, "main albumByID")
-	   	fmt.Println("albumByID 1: ", d)
+	d, err := albumByID(1)
+	check(err, "main albumByID")
+	fmt.Println("albumByID 1: ", d)
 
 	b, err := albumsByPrice(1.99)
 	check(err, "main albumsByPrice test")
-	fmt.Println("albumsByPrice $1.99: ", b)
+	fmt.Println("test in main, albumsByPrice $1.99: ", b)
 
 	c, err := albumsByTitle("Giant Steps")
 	check(err, "main albumsByTitle")
-	fmt.Println("albumsByTitle ': ", c)*/
+	fmt.Println("albumsByTitle ': ", c) */
 
 	//END TEST
-
-	// amap, err := albumsByTitle("Giant Steps")
-	// check(err, "testing err in main...")
-	// fmt.Println("albumsByTitle/ amap: ", amap)
-	// fmt.Println( amap.ID, ",", amap.Title)
 
 	//http call handler:
 	http.HandleFunc("/", searchHandler)
 	http.HandleFunc("/add", addHandler)
-	// http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/dump", dumpHandler)
 	http.HandleFunc("/test", testHandler)
 	http.HandleFunc("/edit", editHandler)
@@ -151,7 +146,7 @@ func albumsByArtist(name string) ([]AlbumMap, error) {
 func albumsByTitle(title string) ([]AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
 	var album []AlbumMap
-	l := log.WithFields(log.Fields{"func": "albumsByTitle()", "title": title})
+	l := log.WithFields(log.Fields{"in func": "albumsByTitle()", "title": title})
 
 	rows, err := db.Query("SELECT * FROM album WHERE title = ?", title)
 	if err != nil {
@@ -199,8 +194,9 @@ func albumsByPrice(price float32) ([]AlbumMap, error) {
 	var album []AlbumMap
 	l := log.WithFields(log.Fields{"func": "albumsByprice()", "price": price, "price data type": reflect.TypeOf(price)})
 
-	// rows, err := db.Query("SELECT * FROM album WHERE price = ?", price) //if this errors use below format
-	rows, err := db.Query("SELECT * FROM album WHERE price = ?", float64(price)) //
+	price64 := float64(price)
+	_ = price64 //pretend to do something
+	rows, err := db.Query(fmt.Sprintf("SELECT * FROM album WHERE price = %v;", price))
 	if err != nil {
 		return nil, fmt.Errorf("albumsByprice %v: %v", price, err)
 	}
@@ -403,32 +399,30 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		//if we have a price, we must have either artist or title data for search
 		if details.Price > 0.00 {
 			//else its price only search
-			l = l.WithField("where", "at price only search")
-			albumResult, err := albumsByPrice(details.Price)
+			l = l.WithFields(log.Fields{"where": "Price only search", "albumResult": albumResult})
+			albumResult, err = albumsByPrice(details.Price)
 			check(err, "in price only search")
-			// albumResult = []Album{priceOnly}
-			//albumResult = priceOnly
-			l.Info("albumResult: ", albumResult)
-			return
+			l.Info("got here?????")
+			//return
 
 		} else if details.Title != "" {
 			//TITLE ONLY
-			l = l.WithField("where", "title only search")
+			l = l.WithFields(log.Fields{"where": "Title only search", "albumResult": albumResult})
 			albumResult, err = albumsByTitle(details.Title)
 			check(err, "in title only search")
-			l.Info("albumResult: ", albumResult)
-			return
+			l.Info("got here frankly?")
+			//return
 		} else if details.Artist != "" {
 			//ARTIST ONLY
-			l = l.WithField("where", "artist only search")
+			l = l.WithFields(log.Fields{"where": "Artist only search", "albumResult": albumResult})
 			albumResult, err = albumsByArtist(details.Artist)
 			check(err, "in album only search")
-			l.Info("testing albumResult", albumResult)
-			return
+			l.Info()
+			//return
 		}
 
-		// /* l.Info("(map not be blank ) albumResult: ", albumResult)
-		l.Info("albumResult: ", albumResult)
+		l.Info("albumResult: ", albumResult) //TODO: delete me
+
 		if len(albumResult) == 0 {
 			l.Warn("albumResult shouldnt be blank at this point. expect errors.")
 		}
@@ -449,11 +443,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			Success bool
 			Body    Page
 			AlbMap  []AlbumMap
-			// AlbumMap     map[string]interface{}
-			// ResultTitle  interface{}
-			// ResultArtist interface{}
-			// ResultPrice  interface{}
-			// ResultID     interface{}
 		}{true, pageInfo, albumResult})
 
 		l.Info("Parsed & exec search results. ")
