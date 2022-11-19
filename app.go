@@ -159,7 +159,6 @@ func albumsByTitle(title string) ([]AlbumMap, error) {
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 			return nil, fmt.Errorf("albumsByTitle %q: %v", title, err)
 		}
-		fmt.Println("got here 2? alb", alb)
 		album = append(album, alb)
 	}
 	if err := rows.Err(); err != nil {
@@ -346,7 +345,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		priceList, err := allAlbumPrices()
 		check(err, "priceList")
 
-		l.Info("PRICELIST: ", priceList)
+		l.Info()
 
 		// prepare page struct for form dropdowns ->title & artist
 		art := Page{
@@ -378,7 +377,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		var price float32
 		var err error
 		priceValue := r.FormValue("price")
-		l.Info("From form price Value is: ", priceValue)
+		l.Info()
 
 		// if priceValue input, format priceValue to float32
 		if priceValue != "" {
@@ -410,7 +409,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			l = l.WithFields(log.Fields{"where": "Title only search", "albumResult": albumResult})
 			albumResult, err = albumsByTitle(details.Title)
 			check(err, "in title only search")
-			l.Info("got here frankly?")
+			l.Info()
 			//return
 		} else if details.Artist != "" {
 			//ARTIST ONLY
@@ -773,7 +772,6 @@ func dumpHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Errorf("dumpHandler: %v", err)
 	}
-	l.Infof("data count %v", len(data))
 	details := Page{
 		Body: data,
 	}
@@ -789,7 +787,7 @@ func dataDump() ([]AlbumMap, error) {
 
 	l := log.WithFields(log.Fields{"Result": "dataDump()"})
 
-	rows, err := db.Query("SELECT * FROM album ORDER by artist LIMIT 50;")
+	rows, err := db.Query("SELECT * FROM album ORDER by title LIMIT 50;")
 	if err != nil {
 		return nil, fmt.Errorf("dataDump(): %v", err)
 	}
