@@ -76,7 +76,13 @@ func main() {
 	l.Info("Connected!\n")
 
 	// TEST in MAIN
-	/* check := func(err error, at string) {
+	/*cmd := "SELECT * FROM album;"
+	res, err := genericQuery(cmd)
+
+	for _, r := range res {
+		fmt.Println(r)
+	}
+	 check := func(err error, at string) {
 		if err != nil {
 			log.Fatalf("\nERROR: %v; \nHAPPENED AT: %v", err, at)
 		}
@@ -385,7 +391,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			check(err, "priceValue to float32")
 			price = float32(prc)
 		}
-		l.Info("Converted price Value to float32:: ", price)
+		l.Info()
 
 		// save all input form values in album struct
 		details := Album{
@@ -401,7 +407,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 			l = l.WithFields(log.Fields{"where": "Price only search", "albumResult": albumResult})
 			albumResult, err = albumsByPrice(details.Price)
 			check(err, "in price only search")
-			l.Info("got here?????")
+			l.Info()
 			//return
 
 		} else if details.Title != "" {
@@ -660,11 +666,7 @@ func allArtistNames() ([]string, error) {
 	sort.Slice(res, func(i, j int) bool {
 		return res[i] < res[j]
 	})
-	/* 	res = type SortBy []Type
 
-	   	func (a SortBy) Len() int           { return len(a) }
-	   	func (a SortBy) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-	   	func (a SortBy) Less(i, j int) bool { return a[i] < a[j] } */
 	l = l.WithFields(log.Fields{"Result": fmt.Sprintf("%v count", len(res))})
 	l.Info()
 	return res, nil
@@ -675,7 +677,7 @@ func allAlbumNames() ([]string, error) {
 	var res []string
 	l := log.WithFields(log.Fields{"IN": "allAlbumNames()"})
 	// db query - distinct, no overlap
-	cmd := "SELECT title from album;"
+	cmd := "SELECT DISTINCT title from album ORDER BY 1;"
 	rows, err := db.Query(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("allAlbumNames: %v", err)
@@ -810,9 +812,9 @@ func dataDump() ([]AlbumMap, error) {
 }
 
 // generic query
-func genericQuery(cmd string) ([]Album, error) {
+func genericQuery(cmd string) ([]AlbumMap, error) {
 	l := log.WithFields(log.Fields{"In": "genericQuery()"})
-	var albums []Album
+	var albums []AlbumMap
 
 	rows, err := db.Query(cmd)
 	if err != nil {
@@ -821,7 +823,7 @@ func genericQuery(cmd string) ([]Album, error) {
 	defer rows.Close()
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Album
+		var alb AlbumMap
 		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
 			return nil, fmt.Errorf("genericQuery(): %v", err)
 		}
