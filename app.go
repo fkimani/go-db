@@ -176,24 +176,6 @@ func albumsByTitle(title string) ([]AlbumMap, error) {
 }
 
 // albumsByPrice queries for the album by price.
-/* func albumsByPrice(price float32) ([]AlbumMap, error) {
-	// An album to hold data from the returned row.
-	var albums []AlbumMap
-	l := log.WithFields(log.Fields{"In": "albumsByPrice()", "price": price})
-
-	//db query - Note: converting price to string for query
-	row := db.QueryRow("SELECT * FROM album WHERE price = ?; ", fmt.Sprint(price))
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
-		}
-		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
-	}
-	l = l.WithFields(log.Fields{"Album result": alb})
-	l.Info()
-	return albums, nil
-} */
-
 func albumsByPrice(price float32) ([]AlbumMap, error) {
 	// An albums slice to hold data from returned rows.
 	var album []AlbumMap
@@ -221,59 +203,6 @@ func albumsByPrice(price float32) ([]AlbumMap, error) {
 	l = l.WithFields(log.Fields{"Result": album})
 	l.Info("album: ", album)
 	return album, nil
-}
-
-// albumsByPriceTitle queries for album by price+title. --not in use i dont think
-func albumsByPriceTitle(price float32, title string) (Album, error) {
-	// An album to hold data from the returned row.
-	var alb Album
-	l := log.WithFields(log.Fields{"In": "albumsByPrice()", "price": price})
-
-	//db query - Note: converting price to string for query
-	row := db.QueryRow("SELECT * FROM album WHERE price = ? AND title = ?; ", fmt.Sprint(price), title)
-	if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-		if err == sql.ErrNoRows {
-			return alb, fmt.Errorf("albumsByPrice %f: no such album", price)
-		}
-		return alb, fmt.Errorf("albumsByPrice %f: %v", price, err)
-	}
-	l = l.WithFields(log.Fields{"Album result": alb})
-	l.Info()
-	return alb, nil
-}
-
-// albumsByPriceArtist queries for album by price+artist.
-func albumsByPriceArtist(price float32, artist string) ([]AlbumMap, error) {
-	// An album to hold data from the returned row.
-	var albums []AlbumMap
-	l := log.WithFields(log.Fields{"In": "albumsByPriceArtist()", "price": price, "artist": artist})
-	l.Info("Queue the orchestra...")
-
-	rows, err := db.Query("SELECT * FROM album WHERE price = ? AND artist = ? ORDER BY 1; ", fmt.Sprint(price), artist)
-	//if err := row.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("albumsByPriceArtist %f: no such album", price)
-		}
-		return nil, fmt.Errorf("albumsByPriceArtist %f: %v", price, err)
-	}
-	defer rows.Close()
-
-	// Loop through rows, using Scan to assign column data to struct fields.
-	for rows.Next() {
-		var alb AlbumMap
-		if err := rows.Scan(&alb.ID, &alb.Title, &alb.Artist, &alb.Price); err != nil {
-			return nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
-		}
-		albums = append(albums, alb)
-
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("albumsByArtist %q: %v", artist, err)
-	}
-	l = l.WithFields(log.Fields{"albumsByPriceArtist() result": albums})
-	l.Info("grammies are in...")
-	return albums, nil
 }
 
 // albumByID queries for the album with the specified ID.
@@ -315,7 +244,6 @@ func deleteAlbum(alb Album) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("deleteAlbum: %v", err)
 	}
-	// id, err := result.LastInsertId()//see https://dev.mysql.com/doc/refman/8.0/en/delete.html - appropos return values of DELETE
 	if err != nil {
 		return 0, fmt.Errorf("deleteAlbum: %v", err)
 	}
@@ -470,41 +398,15 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	details := Album{
 		id, r.FormValue("title"), r.FormValue("artist"), price,
 	}
+
+	l = l.WithFields(log.Fields{"title": details.Title, "id": id, "artist": details.Artist, "price": details.Price})
 	//parse template
 	tmpl, err := template.ParseFiles("templates/edit.html")
 	if err != nil {
 		l.Fatalf("edit template errors %v", err)
 	}
 	l.Info("Template parsed")
-	// price check
-	priceStr := r.FormValue("price")
-	l.Info("priceStr,", priceStr)
-	//var price float32
-	// var err error
 
-	// if price is passed
-	/* 	if priceStr != "" {
-	   		// convert string to float64
-	   		priceValue, err := strconv.ParseFloat(priceStr, 32)
-	   		if err != nil {
-	   			l.WithFields(log.Fields{"value": priceValue, "error": err})
-	   			l.Fatal(err)
-	   		}
-	   		// format 2 Decimal places
-	   		priceValue = math.Round(100*priceValue) / 100
-	   		// format to float32
-	   		price = float32(priceValue)
-	   		l = l.WithFields(log.Fields{"price": price})
-	   		l.Info("Price is right. ")
-	   	}
-	   	//put artist, title and price values in struct
-	   	details := Album{
-	   		Title:  r.FormValue("title"),
-	   		Artist: r.FormValue("artist"),
-	   		Price:  price,
-	   	}
-	   	l.Infof("details: %v", details)
-	*/
 	// if details has data, exec template
 	if details.Title != "" || details.Artist != "" || details.Price > 0.0 {
 		l.Infof("Show details %v: ", details)
@@ -515,7 +417,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		res, _ := json.Marshal(resp)
 		l.Info("result marshalled to json %v")
-		//then execute template
+		// execute template
 		tmpl.Execute(w, struct {
 			Success bool
 			Message string
