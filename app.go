@@ -507,14 +507,31 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	details := Album{
 		Title:  r.FormValue("title"),
 		Artist: r.FormValue("artist"),
-		// Price:  price,
 	}
 
 	//execute conditions 1: if inputs blank(fresh start), render blank template
-	if details.Title == "" && details.Artist == "" {
+	if details.Title == "" || details.Artist == "" {
 		l = l.WithFields(log.Fields{"Action": "Render Delete Album Template"})
 		l.Info("Render delete album template.")
-		tmpl.Execute(w, nil)
+		//TODO:
+		//1. provide user with artistsList then titleList based on selected artist. use js.
+		//2. Makes it easier to get both inputs for a deletion can be done on the block below
+		artistsList, err := allArtistNames()
+		check(err, "artistsList get for delete dropdown.")
+
+		titlesList, err := allAlbumNames()
+		check(err, "titlesList get for delete dropdown.")
+
+		l.Info("ArtistsList: ", artistsList)
+		//exec template
+		//tmpl.Execute(w, nil)
+		tmpl.Execute(w, struct {
+			Success bool
+			Artists []string
+			Titles  []string
+		}{
+			false, artistsList, titlesList,
+		})
 	} else {
 		//execute condition 2. execute sql and return success msg to client
 		id, err := deleteAlbum(details)
@@ -764,4 +781,10 @@ func updateAlbum(alb Album) (Album, int64, error) {
 	}
 	l.Infof("%v row(s) updated. View Record: %v ", rows, alb)
 	return alb, rows, nil
+}
+
+func check(err error, at string) {
+	if err != nil {
+		log.Fatalf("Error %v at %v", err, at)
+	}
 }
