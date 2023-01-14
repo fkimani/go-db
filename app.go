@@ -76,6 +76,43 @@ func main() {
 	l.Info("Connected!\n")
 
 	// TEST in MAIN
+	// 1. get artistList
+	// 2. get titlesList
+	// 3. create struct for key:value artist:albums.
+	// 4.loop through artistsList and get each artist's titles
+	// 5. find a way to package this in a struct
+	// 6. key=artistname; value=albumsby the artist
+
+	/* // 1. get artistList
+	artistsList, err := allArtistNames()
+	check(err, "artistsList get for delete dropdown.")
+	_ = artistsList //pretend to do something
+	// 2. get titlesList
+	titlesList, err := allAlbumNames()
+	check(err, "titlesList get for delete dropdown.")
+	_ = titlesList //pretend to do something
+
+	// 3. create struct for key:value artist:albums.
+	type ArtistsAlbums struct {
+		Name   string     `json:"name"`
+		Albums []AlbumMap `json:"albums"`
+	}
+
+	// 4.,5,6 loop through artistsList and get each artist's titles
+	var albumlist []ArtistsAlbums
+	for _, theartist := range artistsList {
+		var t ArtistsAlbums
+		t.Name = theartist
+		aalb, _ := albumsByArtist(theartist)
+		t.Albums = aalb
+		//fmt.Println(theartist, ": ", aa)
+		albumlist = append(albumlist, t)
+	}
+
+	fmt.Println("artists albums list: ", albumlist) */
+
+	//END DELETE TEST
+
 	/*cmd := "SELECT * FROM album;"
 	res, err := genericQuery(cmd)
 
@@ -516,21 +553,50 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 		//TODO:
 		//1. provide user with artistsList then titleList based on selected artist. use js.
 		//2. Makes it easier to get both inputs for a deletion can be done on the block below
+
+		// 1. get artistList
+		// 2. get titlesList
+		// 3. create struct for key:value artist:albums.
+		// 4.loop through artistsList and get each artist's titles
+		// 5. find a way to package this in a struct
+		// 6. key=artistname; value=albumsby the artist
+
+		// 1. get artistList
 		artistsList, err := allArtistNames()
 		check(err, "artistsList get for delete dropdown.")
+		//_ = artistsList //pretend to do something
 
+		// 2. get titlesList
 		titlesList, err := allAlbumNames()
 		check(err, "titlesList get for delete dropdown.")
+		_ = titlesList //pretend to do something
 
-		l.Info("ArtistsList: ", artistsList)
+		// 3. create struct for key:value artist:albums.
+		type ArtistsAlbums struct {
+			Name   string     `json:"name"`
+			Albums []AlbumMap `json:"albums"`
+		}
+
+		// 4.,5,6 loop through artistsList and get each artist's titles
+		var albumlist []ArtistsAlbums
+		for _, theartist := range artistsList {
+			var t ArtistsAlbums
+			t.Name = theartist
+			t.Albums, err = albumsByArtist(theartist)
+			check(err, "delete handler")
+			albumlist = append(albumlist, t)
+		}
+		l.Info()
+
 		//exec template
-		//tmpl.Execute(w, nil)
+		// tmpl.Execute(w, nil)
 		tmpl.Execute(w, struct {
 			Success bool
 			Artists []string
 			Titles  []string
+			MusicBy []ArtistsAlbums
 		}{
-			false, artistsList, titlesList,
+			false, artistsList, titlesList, albumlist,
 		})
 	} else {
 		//execute condition 2. execute sql and return success msg to client
