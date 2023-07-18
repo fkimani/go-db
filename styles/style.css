@@ -1,0 +1,50 @@
+.main-nav {
+    padding: 20px 0;
+}
+
+nav ul {
+    display: flex;
+}
+
+nav ul li {
+    list-style: none;
+    padding: 0 0.6rem;
+    text-align: center;
+    width: max-content;
+} 
+
+.main-nav li a {
+    text-transform: uppercase;
+    text-decoration: none;
+    color: whitesmoke;
+    font-size: large;
+}
+
+.main-nav li a:hover {
+    text-decoration: skyblue;
+    color: rgb(190, 172, 172);
+}
+
+body {
+    background-color: #0d1623;
+}
+
+#main-content {
+    min-height: 200px;
+    font: white;
+    padding: 5px 20px;
+    margin: 10px auto;
+}
+
+body {
+    color: white;
+}
+
+#resultstbl {
+    width:70%;
+    text-align:left;
+}
+
+#resultstbl td tr {
+    padding-left:20px;
+}
