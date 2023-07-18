@@ -31,6 +31,7 @@ body {
 
 #main-content {
     min-height: 200px;
+    height: 500px;
     font: white;
     padding: 5px 20px;
     margin: 10px auto;
