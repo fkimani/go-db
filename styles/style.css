@@ -1,10 +1,3 @@
-.form-select {
-    display:inline !important;
-    width:20% !important;
-}
-
-.form-select-sm { float:left; width:20% !important;}
-
 .main-nav {
     padding: 20px 0;
 }
@@ -18,11 +11,6 @@ nav ul li {
     padding: 0 0.6rem;
     text-align: center;
     width: max-content;
-    /*try*/
-   /*  padding-right: 10px;
-    padding-left: 10px;
-    margin-right: auto;
-    margin-left: auto;*/
 } 
 
 .main-nav li a {
@@ -43,8 +31,9 @@ body {
 
 #main-content {
     min-height: 200px;
-    padding: 20px;
     font: white;
+    padding: 5px 20px;
+    margin: 10px auto;
 }
 
 body {
